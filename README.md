@@ -150,7 +150,6 @@ The `scripts/` directory contains several example services to get you started:
 - **uptime.sh** - System monitoring service (uptime, load average)
 - **json-processor.sh** - JSON validation, transformation, and formatting
 - **file-ops.sh** - File operations and utilities
-- **uname.sh** - System information service
 
 ## Features
 
