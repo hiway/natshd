@@ -34,6 +34,11 @@ func TestNewManager(t *testing.T) {
 	if manager.supervisor == nil {
 		t.Error("Expected supervisor to be created")
 	}
+
+	// Check that debounce tracker is initialized
+	if manager.debounceTracker == nil {
+		t.Error("Expected debounce tracker to be initialized")
+	}
 }
 
 func TestManager_Start(t *testing.T) {
@@ -84,6 +89,124 @@ echo "test response"
 	// Check that services were discovered
 	if len(manager.services) == 0 {
 		t.Error("Expected at least one service to be discovered")
+	}
+}
+
+func TestManager_RestartServiceWithGracefulShutdown(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := logging.SetupLogger("info")
+	natsConn := (*nats.Conn)(nil) // Use nil for testing
+
+	manager := NewManager(tempDir, natsConn, logger)
+
+	scriptPath := filepath.Join(tempDir, "test.sh")
+
+	// Create and add a service first
+	scriptContent := `#!/bin/bash
+if [[ "$1" == "info" ]]; then
+  cat <<EOF
+{
+  "name": "TestService",
+  "version": "1.0.0",
+  "description": "A test service",
+  "endpoints": [
+    {
+      "name": "TestEndpoint",
+      "subject": "test.endpoint"
+    }
+  ]
+}
+EOF
+  exit 0
+fi
+echo "test response"
+`
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test script: %v", err)
+	}
+
+	err = manager.AddService(scriptPath)
+	if err != nil {
+		t.Fatalf("AddService failed: %v", err)
+	}
+
+	// Get original service
+	originalService := manager.services[scriptPath]
+
+	// Restart the service with graceful shutdown
+	err = manager.RestartServiceGracefully(scriptPath)
+	if err != nil {
+		t.Fatalf("RestartServiceGracefully failed: %v", err)
+	}
+
+	// Check that a new service instance was created
+	newService := manager.services[scriptPath]
+	if originalService == newService {
+		t.Error("Expected service instance to be replaced after restart")
+	}
+}
+
+func TestManager_FileEventDebouncing(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := logging.SetupLogger("info")
+	natsConn := (*nats.Conn)(nil) // Use nil for testing
+
+	manager := NewManager(tempDir, natsConn, logger)
+
+	scriptPath := filepath.Join(tempDir, "test.sh")
+	scriptContent := `#!/bin/bash
+if [[ "$1" == "info" ]]; then
+  cat <<EOF
+{
+  "name": "TestService",
+  "version": "1.0.0",
+  "description": "A test service",
+  "endpoints": [
+    {
+      "name": "TestEndpoint",
+      "subject": "test.endpoint"
+    }
+  ]
+}
+EOF
+  exit 0
+fi
+echo "test response"
+`
+
+	err := os.WriteFile(scriptPath, []byte(scriptContent), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create test script: %v", err)
+	}
+
+	err = manager.AddService(scriptPath)
+	if err != nil {
+		t.Fatalf("AddService failed: %v", err)
+	}
+
+	// Test that multiple rapid events within debounce period create only one tracker
+	initialTrackerCount := len(manager.debounceTracker)
+
+	// Simulate rapid file events
+	for i := 0; i < 5; i++ {
+		manager.handleFileEventDebounced(scriptPath, "write")
+		time.Sleep(10 * time.Millisecond) // Less than debounce period
+	}
+
+	// Check that only one tracker was created
+	trackerCount := len(manager.debounceTracker)
+	if trackerCount != initialTrackerCount+1 {
+		t.Errorf("Expected %d trackers, got %d", initialTrackerCount+1, trackerCount)
+	}
+
+	// Wait for debounce period to complete
+	time.Sleep(550 * time.Millisecond)
+
+	// Tracker should be cleaned up after execution
+	finalTrackerCount := len(manager.debounceTracker)
+	if finalTrackerCount != initialTrackerCount {
+		t.Errorf("Expected %d trackers after cleanup, got %d", initialTrackerCount, finalTrackerCount)
 	}
 }
 

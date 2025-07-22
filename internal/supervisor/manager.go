@@ -17,16 +17,25 @@ import (
 	"github.com/thejerf/suture/v4"
 )
 
+// FileEventTracker tracks file events for debouncing
+type FileEventTracker struct {
+	lastEventTime time.Time
+	timer         *time.Timer
+	mutex         sync.Mutex
+}
+
 // ServiceManager manages all NATS microservices backed by shell scripts
 type ServiceManager struct {
-	scriptsPath   string
-	natsConn      *nats.Conn
-	logger        zerolog.Logger
-	supervisor    *suture.Supervisor
-	services      map[string]*ManagedService
-	serviceTokens map[string]suture.ServiceToken
-	watcher       *fsnotify.Watcher
-	mutex         sync.RWMutex
+	scriptsPath      string
+	natsConn         *nats.Conn
+	logger           zerolog.Logger
+	supervisor       *suture.Supervisor
+	services         map[string]*ManagedService
+	serviceTokens    map[string]suture.ServiceToken
+	watcher          *fsnotify.Watcher
+	mutex            sync.RWMutex
+	debounceTracker  map[string]*FileEventTracker
+	debounceInterval time.Duration
 }
 
 // NewManager creates a new ServiceManager
@@ -35,12 +44,14 @@ func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) 
 	supervisor := suture.NewSimple("ServiceSupervisor")
 
 	return &ServiceManager{
-		scriptsPath:   scriptsPath,
-		natsConn:      natsConn,
-		logger:        logger.With().Str("component", "manager").Logger(),
-		supervisor:    supervisor,
-		services:      make(map[string]*ManagedService),
-		serviceTokens: make(map[string]suture.ServiceToken),
+		scriptsPath:      scriptsPath,
+		natsConn:         natsConn,
+		logger:           logger.With().Str("component", "manager").Logger(),
+		supervisor:       supervisor,
+		services:         make(map[string]*ManagedService),
+		serviceTokens:    make(map[string]suture.ServiceToken),
+		debounceTracker:  make(map[string]*FileEventTracker),
+		debounceInterval: 500 * time.Millisecond, // 500ms debounce
 	}
 }
 
@@ -218,6 +229,11 @@ func (sm *ServiceManager) RemoveService(scriptPath string) error {
 
 // RestartService restarts a managed service
 func (sm *ServiceManager) RestartService(scriptPath string) error {
+	return sm.RestartServiceGracefully(scriptPath)
+}
+
+// RestartServiceGracefully restarts a managed service with proper shutdown
+func (sm *ServiceManager) RestartServiceGracefully(scriptPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
@@ -227,7 +243,7 @@ func (sm *ServiceManager) RestartService(scriptPath string) error {
 		Msg("Restarting service")
 
 	// Check if service exists
-	_, exists := sm.services[scriptPath]
+	oldService, exists := sm.services[scriptPath]
 	if !exists {
 		sm.logger.Warn().
 			Str("script", scriptPath).
@@ -235,27 +251,46 @@ func (sm *ServiceManager) RestartService(scriptPath string) error {
 		return nil
 	}
 
-	// Remove old service from supervisor
+	// Step 1: Gracefully stop the old NATS service
+	if oldService.natsService != nil {
+		sm.logger.Debug().
+			Str("script", scriptPath).
+			Msg("Stopping old NATS service")
+
+		if err := oldService.natsService.Stop(); err != nil {
+			sm.logger.Error().
+				Err(err).
+				Str("script", scriptPath).
+				Msg("Error stopping old NATS service")
+		}
+
+		// Give some time for the service to properly unregister
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	// Step 2: Remove old service from supervisor
 	if token, exists := sm.serviceTokens[scriptPath]; exists {
 		sm.supervisor.Remove(token)
 		delete(sm.serviceTokens, scriptPath)
 	}
 
-	// Create new managed service
+	// Step 3: Create new managed service
 	managedService := NewManagedService(scriptPath, sm.natsConn, sm.logger)
 
-	// Initialize the service
-	ctx := context.Background()
+	// Step 4: Initialize the service
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
 	if err := managedService.Initialize(ctx); err != nil {
 		// Remove from services map if initialization failed
 		delete(sm.services, scriptPath)
 		return fmt.Errorf("failed to initialize restarted service: %w", err)
 	}
 
-	// Update services map
+	// Step 5: Update services map
 	sm.services[scriptPath] = managedService
 
-	// Add new service to supervisor
+	// Step 6: Add new service to supervisor
 	token := sm.supervisor.Add(managedService)
 	sm.serviceTokens[scriptPath] = token
 	managedService.serviceToken = token
@@ -338,7 +373,7 @@ func (sm *ServiceManager) watchFileChanges(ctx context.Context) {
 	}
 }
 
-// handleFileEvent processes file system events
+// handleFileEvent processes file system events with debouncing
 func (sm *ServiceManager) handleFileEvent(event fsnotify.Event) {
 	sm.logger.Debug().
 		Str("file", event.Name).
@@ -363,23 +398,8 @@ func (sm *ServiceManager) handleFileEvent(event fsnotify.Event) {
 		}
 
 	case event.Op&fsnotify.Write == fsnotify.Write:
-		// File modified
-		if sm.IsValidScript(event.Name) {
-			if err := sm.RestartService(event.Name); err != nil {
-				sm.logger.Error().
-					Err(err).
-					Str("script", event.Name).
-					Msg("Failed to restart service for modified file")
-			}
-		} else {
-			// File is no longer valid, remove service if it exists
-			if err := sm.RemoveService(event.Name); err != nil {
-				sm.logger.Error().
-					Err(err).
-					Str("script", event.Name).
-					Msg("Failed to remove service for invalid modified file")
-			}
-		}
+		// File modified - use debouncing to handle multiple rapid events
+		sm.handleFileEventDebounced(event.Name, "write")
 
 	case event.Op&fsnotify.Remove == fsnotify.Remove:
 		// File deleted
@@ -397,6 +417,83 @@ func (sm *ServiceManager) handleFileEvent(event fsnotify.Event) {
 				Err(err).
 				Str("script", event.Name).
 				Msg("Failed to remove service for renamed file")
+		}
+	}
+}
+
+// handleFileEventDebounced handles file events with debouncing to prevent rapid restarts
+func (sm *ServiceManager) handleFileEventDebounced(filePath, eventType string) {
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
+
+	// Get or create tracker for this file
+	tracker, exists := sm.debounceTracker[filePath]
+	if !exists {
+		tracker = &FileEventTracker{}
+		sm.debounceTracker[filePath] = tracker
+	}
+
+	tracker.mutex.Lock()
+	defer tracker.mutex.Unlock()
+
+	// Update last event time
+	tracker.lastEventTime = time.Now()
+
+	// Cancel existing timer if it exists
+	if tracker.timer != nil {
+		tracker.timer.Stop()
+	}
+
+	// Create new timer for debounced action
+	tracker.timer = time.AfterFunc(sm.debounceInterval, func() {
+		sm.executeFileEventAction(filePath, eventType)
+
+		// Clean up tracker after execution
+		sm.mutex.Lock()
+		delete(sm.debounceTracker, filePath)
+		sm.mutex.Unlock()
+	})
+}
+
+// executeFileEventAction performs the actual file event action after debounce
+func (sm *ServiceManager) executeFileEventAction(filePath, eventType string) {
+	sm.logger.Debug().
+		Str("file", filePath).
+		Str("event", eventType).
+		Msg("Executing debounced file event action")
+
+	switch eventType {
+	case "write":
+		// Check if file is still valid after modification
+		if sm.IsValidScript(filePath) {
+			// Check if service exists - restart if it does, add if it doesn't
+			sm.mutex.RLock()
+			_, exists := sm.services[filePath]
+			sm.mutex.RUnlock()
+
+			if exists {
+				if err := sm.RestartServiceGracefully(filePath); err != nil {
+					sm.logger.Error().
+						Err(err).
+						Str("script", filePath).
+						Msg("Failed to restart service for modified file")
+				}
+			} else {
+				if err := sm.AddService(filePath); err != nil {
+					sm.logger.Error().
+						Err(err).
+						Str("script", filePath).
+						Msg("Failed to add service for modified file")
+				}
+			}
+		} else {
+			// File is no longer valid, remove service if it exists
+			if err := sm.RemoveService(filePath); err != nil {
+				sm.logger.Error().
+					Err(err).
+					Str("script", filePath).
+					Msg("Failed to remove service for invalid modified file")
+			}
 		}
 	}
 }
