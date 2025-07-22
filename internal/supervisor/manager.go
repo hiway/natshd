@@ -36,6 +36,9 @@ type ServiceManager struct {
 	mutex            sync.RWMutex
 	debounceTracker  map[string]*FileEventTracker
 	debounceInterval time.Duration
+	// Track file executable status for detecting permission changes
+	fileExecutableStatus  map[string]bool
+	permissionCheckTicker *time.Ticker
 }
 
 // NewManager creates a new ServiceManager
@@ -44,14 +47,16 @@ func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) 
 	supervisor := suture.NewSimple("ServiceSupervisor")
 
 	return &ServiceManager{
-		scriptsPath:      scriptsPath,
-		natsConn:         natsConn,
-		logger:           logger.With().Str("component", "manager").Logger(),
-		supervisor:       supervisor,
-		services:         make(map[string]*ManagedService),
-		serviceTokens:    make(map[string]suture.ServiceToken),
-		debounceTracker:  make(map[string]*FileEventTracker),
-		debounceInterval: 500 * time.Millisecond, // 500ms debounce
+		scriptsPath:           scriptsPath,
+		natsConn:              natsConn,
+		logger:                logger.With().Str("component", "manager").Logger(),
+		supervisor:            supervisor,
+		services:              make(map[string]*ManagedService),
+		serviceTokens:         make(map[string]suture.ServiceToken),
+		debounceTracker:       make(map[string]*FileEventTracker),
+		debounceInterval:      500 * time.Millisecond, // 500ms debounce
+		fileExecutableStatus:  make(map[string]bool),
+		permissionCheckTicker: time.NewTicker(5 * time.Second), // Check every 5 seconds
 	}
 }
 
@@ -78,6 +83,9 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 	// Watch for file changes
 	go sm.watchFileChanges(ctx)
 
+	// Monitor file permission changes (for Linux where fsnotify doesn't support chmod)
+	go sm.watchPermissionChanges(ctx)
+
 	// Block until context is cancelled
 	<-ctx.Done()
 
@@ -95,6 +103,10 @@ func (sm *ServiceManager) Stop() {
 
 	if sm.watcher != nil {
 		sm.watcher.Close()
+	}
+
+	if sm.permissionCheckTicker != nil {
+		sm.permissionCheckTicker.Stop()
 	}
 
 	// Note: Suture supervisor is stopped by cancelling the context passed to Serve()
@@ -495,6 +507,85 @@ func (sm *ServiceManager) executeFileEventAction(filePath, eventType string) {
 					Msg("Failed to remove service for invalid modified file")
 			}
 		}
+	}
+}
+
+// watchPermissionChanges monitors file executable status changes to detect
+// when scripts become executable (for Linux where fsnotify doesn't support chmod events)
+func (sm *ServiceManager) watchPermissionChanges(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			if sm.permissionCheckTicker != nil {
+				sm.permissionCheckTicker.Stop()
+			}
+			return
+		case <-sm.permissionCheckTicker.C:
+			sm.checkExecutableStatusChanges()
+		}
+	}
+}
+
+// checkExecutableStatusChanges scans for files that have changed executable status
+func (sm *ServiceManager) checkExecutableStatusChanges() {
+	// Walk through all files in scripts directory
+	err := filepath.Walk(sm.scriptsPath, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil // Skip files we can't access
+		}
+
+		// Skip directories
+		if info.IsDir() {
+			return nil
+		}
+
+		// Check if this is a script file
+		if !strings.HasSuffix(path, ".sh") {
+			return nil
+		}
+
+		// Check current executable status
+		isExecutable := info.Mode()&0111 != 0
+
+		sm.mutex.Lock()
+		previousStatus, existed := sm.fileExecutableStatus[path]
+		sm.fileExecutableStatus[path] = isExecutable
+		sm.mutex.Unlock()
+
+		// If status changed from non-executable to executable, add the service
+		if existed && !previousStatus && isExecutable {
+			sm.logger.Info().
+				Str("script", path).
+				Msg("Script became executable - adding service")
+
+			if err := sm.AddService(path); err != nil {
+				sm.logger.Error().
+					Err(err).
+					Str("script", path).
+					Msg("Failed to add service for newly executable script")
+			}
+		}
+		// If status changed from executable to non-executable, remove the service
+		if existed && previousStatus && !isExecutable {
+			sm.logger.Info().
+				Str("script", path).
+				Msg("Script became non-executable - removing service")
+
+			if err := sm.RemoveService(path); err != nil {
+				sm.logger.Error().
+					Err(err).
+					Str("script", path).
+					Msg("Failed to remove service for non-executable script")
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		sm.logger.Error().
+			Err(err).
+			Msg("Failed to check executable status changes")
 	}
 }
 
