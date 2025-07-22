@@ -1,0 +1,12 @@
+# NATS Shell Daemon Configuration
+# This file configures the natshd service for discovering and hosting
+# NATS microservices from shell scripts
+
+# NATS server connection URL
+nats_url = "nats://127.0.0.1:4222"
+
+# Path to directory containing shell script services
+scripts_path = "./scripts"
+
+# Logging level: trace, debug, info, warn, error
+log_level = "info"
