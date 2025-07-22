@@ -93,11 +93,11 @@ func (ms *ManagedService) Serve(ctx context.Context) error {
 	// Add endpoints
 	for _, endpoint := range ms.definition.Endpoints {
 		endpoint := endpoint // capture loop variable
-		err := service.AddEndpoint(endpoint.Subject, micro.HandlerFunc(func(req micro.Request) {
+		err := service.AddEndpoint(endpoint.Name, micro.HandlerFunc(func(req micro.Request) {
 			ms.HandleRequest(&NATSRequestWrapper{req: req})
-		}))
+		}), micro.WithEndpointSubject(endpoint.Subject))
 		if err != nil {
-			return fmt.Errorf("failed to add endpoint %s: %w", endpoint.Subject, err)
+			return fmt.Errorf("failed to add endpoint %s: %w", endpoint.Name, err)
 		}
 	}
 
