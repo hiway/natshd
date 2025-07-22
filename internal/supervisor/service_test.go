@@ -120,7 +120,7 @@ func TestManagedService_Serve(t *testing.T) {
 
 	// Run Serve - it should fail because natsConn is nil, but that's expected
 	err := managedService.Serve(ctx)
-	
+
 	// Should get an error about NATS connection being nil, not a timeout
 	if err == nil {
 		t.Error("Expected error due to nil NATS connection")

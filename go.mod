@@ -6,6 +6,7 @@ toolchain go1.23.11
 
 require (
 	github.com/BurntSushi/toml v1.5.0 // indirect
+	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.19 // indirect

@@ -9,6 +9,7 @@ import (
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/micro"
 	"github.com/rs/zerolog"
+	"github.com/thejerf/suture/v4"
 )
 
 // ScriptRunner interface for executing scripts (allows for mocking)
@@ -19,13 +20,14 @@ type ScriptRunner interface {
 
 // ManagedService represents a supervised NATS microservice backed by a shell script
 type ManagedService struct {
-	scriptPath  string
-	natsConn    *nats.Conn
-	logger      zerolog.Logger
-	runner      ScriptRunner
-	definition  service.ServiceDefinition
-	natsService micro.Service
-	initialized bool
+	scriptPath   string
+	natsConn     *nats.Conn
+	logger       zerolog.Logger
+	runner       ScriptRunner
+	definition   service.ServiceDefinition
+	natsService  micro.Service
+	initialized  bool
+	serviceToken suture.ServiceToken
 }
 
 // NewManagedService creates a new managed service for the given script
@@ -182,7 +184,7 @@ func (w *NATSRequestWrapper) Headers() map[string][]string {
 	if w.req.Headers() == nil {
 		return nil
 	}
-	
+
 	// Convert nats.Header to map[string][]string
 	headers := make(map[string][]string)
 	for k, v := range w.req.Headers() {
