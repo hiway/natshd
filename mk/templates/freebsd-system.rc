@@ -47,7 +47,7 @@ natshd_precmd()
 natshd_start()
 {
     echo "Starting ${name}."
-    /usr/sbin/daemon -f -p ${pidfile} -o ${natshd_log_file} -u ${natshd_user} ${command} ${natshd_flags}
+    /usr/sbin/daemon -f -p ${pidfile} -u ${natshd_user} ${command} ${natshd_flags}
 }
 
 natshd_stop()
@@ -114,7 +114,8 @@ natshd_run()
     natshd_precmd
     
     # Run the service in foreground as the configured user
-    su -m "${natshd_user}" -c "${command} ${natshd_flags}"
+    # Use daemon without -f flag to keep it in foreground
+    /usr/sbin/daemon -u ${natshd_user} ${command} ${natshd_flags}
 }
 
 run_rc_command "$1"
