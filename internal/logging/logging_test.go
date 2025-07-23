@@ -187,9 +187,9 @@ func TestLogRequestResponse(t *testing.T) {
 		t.Errorf("Expected response payload in log")
 	}
 
-       if logEntry["level"] != "debug" {
-	       t.Errorf("Expected level 'debug' for successful request")
-       }
+	if logEntry["level"] != "debug" {
+		t.Errorf("Expected level 'debug' for successful request")
+	}
 }
 
 func TestLogRequestResponseWithError(t *testing.T) {
