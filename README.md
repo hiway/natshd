@@ -40,6 +40,7 @@ The default configuration:
 nats_url = "nats://127.0.0.1:4222"
 scripts_path = "./scripts"
 log_level = "info"
+hostname = "auto"
 ```
 
 ### Running natshd
@@ -54,6 +55,51 @@ log_level = "info"
 # Enable debug logging
 ./natshd -log-level debug
 ```
+
+## Hostname Targeting
+
+`natshd` automatically prefixes all NATS subjects with the system hostname, enabling you to target specific nodes or groups of nodes in a multi-host deployment.
+
+### Configuration Options
+
+- `hostname = "auto"` (default) - Automatically uses the system hostname
+- `hostname = "web01"` - Use an explicit hostname
+- `hostname = "production-server"` - Use any custom identifier
+
+### How It Works
+
+With hostname prefixing, your service subjects become:
+
+```bash
+# Original subject: system.facts
+# Becomes: hostname.system.facts
+
+# Examples:
+# web01.system.facts
+# db-server.system.facts  
+# production-api.greeting.hello
+```
+
+### Multi-Host Usage
+
+```bash
+# Target a specific host
+nats req web01.system.facts '{}'
+
+# Target all hosts with wildcard
+nats req "*.system.facts" '{}'
+
+# Target hosts matching a pattern
+nats req "web*.system.facts" '{}'
+nats req "production-*.system.facts" '{}'
+```
+
+This enables powerful deployment patterns:
+
+- **Development clusters**: Each developer's machine has its own hostname prefix
+- **Environment separation**: `staging-web01`, `production-web01`, etc.
+- **Service discovery**: Find all instances of a service across your infrastructure
+- **Rolling deployments**: Target specific subsets of nodes during updates
 
 ## Writing Service Scripts
 
@@ -249,8 +295,8 @@ nats micro info SystemService
 ### Calling Services
 
 ```bash
-# Send a request to the system facts endpoint
-nats req system.facts '{}'
+# Send a request to the system facts endpoint (with hostname prefix)
+nats req $(hostname).system.facts '{}'
 
 # Response:
 # {
@@ -259,7 +305,7 @@ nats req system.facts '{}'
 # }
 
 # Send a request to the system hardware endpoint (from the same SystemService)
-nats req system.hardware '{}'
+nats req $(hostname).system.hardware '{}'
 
 # Response:
 # {
@@ -268,7 +314,7 @@ nats req system.hardware '{}'
 # }
 
 # Send a request to the greeting service
-nats req greeting.hello '{"name": "Alice"}'
+nats req $(hostname).greeting.hello '{"name": "Alice"}'
 
 # Response:
 # {
@@ -276,6 +322,12 @@ nats req greeting.hello '{"name": "Alice"}'
 #   "message": "Hello, Alice!",
 #   "timestamp": "2024-07-23T10:30:00Z"
 # }
+
+# Target a specific host by name
+nats req web01.system.facts '{}'
+
+# Target all hosts with a wildcard
+nats req "*.system.facts" '{}'
 ```
 
 ### Service Health and Monitoring
