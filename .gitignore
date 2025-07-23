@@ -33,3 +33,9 @@ go.work.sum
 
 config.toml
 tasks.md
+
+# Build artifacts
+natshd
+
+# Development files
+tasks-scripts.md
