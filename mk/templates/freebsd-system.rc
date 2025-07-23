@@ -9,7 +9,7 @@
 name=natshd
 rcvar=${name}_enable
 command="/usr/sbin/daemon"
-command_args="-f -S -T ${name} -t '${name}: NATS Shell Daemon' -l daemon -p /var/run/${name}.pid -o /var/log/${name}.log -u natshd SYSTEM_BIN_DIR_PLACEHOLDER/natshd -config SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
+command_args="-f -S -T ${name} -t 'NATS Shell Daemon' -l daemon -p /var/run/${name}.pid -o /var/log/${name}.log -u natshd SYSTEM_BIN_DIR_PLACEHOLDER/natshd -config SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
 pidfile="/var/run/${name}.pid"
 required_files="SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
 start_precmd="natshd_precmd"

@@ -26,8 +26,22 @@ freebsd-install: build
 	sudo find $(SYSTEM_SCRIPTS_DIR) -name "*.sh" -exec chmod +x {} \;
 	@# Install configuration
 	@echo "Installing configuration..."
-	@sed 's|SYSTEM_SCRIPTS_DIR_PLACEHOLDER|$(SYSTEM_SCRIPTS_DIR)|g' \
-	     mk/templates/system-config.toml | sudo tee $(SYSTEM_CONFIG_DIR)/config.toml > /dev/null
+	@if [ -f $(SYSTEM_CONFIG_DIR)/config.toml ]; then \
+		echo "Configuration file $(SYSTEM_CONFIG_DIR)/config.toml already exists."; \
+		echo -n "Overwrite it? [y/N]: "; \
+		read -r response; \
+		if [ "$$response" = "y" ] || [ "$$response" = "Y" ]; then \
+			sed 's|SYSTEM_SCRIPTS_DIR_PLACEHOLDER|$(SYSTEM_SCRIPTS_DIR)|g' \
+			    mk/templates/system-config.toml | sudo tee $(SYSTEM_CONFIG_DIR)/config.toml > /dev/null; \
+			echo "Configuration file updated."; \
+		else \
+			echo "Keeping existing configuration file."; \
+		fi; \
+	else \
+		sed 's|SYSTEM_SCRIPTS_DIR_PLACEHOLDER|$(SYSTEM_SCRIPTS_DIR)|g' \
+		    mk/templates/system-config.toml | sudo tee $(SYSTEM_CONFIG_DIR)/config.toml > /dev/null; \
+		echo "Configuration file created."; \
+	fi
 	@# Create RC script
 	@echo "Creating RC script..."
 	@sed -e 's|SYSTEM_BIN_DIR_PLACEHOLDER|$(SYSTEM_BIN_DIR)|g' \
@@ -68,8 +82,22 @@ freebsd-installuser: build
 	find $(USER_SCRIPTS_DIR) -name "*.sh" -exec chmod +x {} \;
 	@# Install configuration
 	@echo "Installing configuration..."
-	@sed 's|USER_SCRIPTS_DIR_PLACEHOLDER|$(USER_SCRIPTS_DIR)|g' \
-	     mk/templates/user-config.toml > $(USER_CONFIG_DIR)/config.toml
+	@if [ -f $(USER_CONFIG_DIR)/config.toml ]; then \
+		echo "Configuration file $(USER_CONFIG_DIR)/config.toml already exists."; \
+		echo -n "Overwrite it? [y/N]: "; \
+		read -r response; \
+		if [ "$$response" = "y" ] || [ "$$response" = "Y" ]; then \
+			sed 's|USER_SCRIPTS_DIR_PLACEHOLDER|$(USER_SCRIPTS_DIR)|g' \
+			    mk/templates/user-config.toml > $(USER_CONFIG_DIR)/config.toml; \
+			echo "Configuration file updated."; \
+		else \
+			echo "Keeping existing configuration file."; \
+		fi; \
+	else \
+		sed 's|USER_SCRIPTS_DIR_PLACEHOLDER|$(USER_SCRIPTS_DIR)|g' \
+		    mk/templates/user-config.toml > $(USER_CONFIG_DIR)/config.toml; \
+		echo "Configuration file created."; \
+	fi
 	@# Create user service script
 	@echo "Creating user service script..."
 	@sed -e 's|USER_BIN_DIR_PLACEHOLDER|$(USER_BIN_DIR)|g' \
