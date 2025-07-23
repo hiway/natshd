@@ -1,0 +1,22 @@
+#!/bin/sh
+
+# PROVIDE: natshd
+# REQUIRE: NETWORKING
+# KEYWORD: shutdown
+
+. /etc/rc.subr
+
+name=natshd
+rcvar=${name}_enable
+command="SYSTEM_BIN_DIR_PLACEHOLDER/natshd"
+command_args="-config SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
+pidfile="/var/run/${name}.pid"
+required_files="SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
+
+natshd_user="natshd"
+natshd_group="natshd"
+
+load_rc_config $name
+: ${natshd_enable:=NO}
+
+run_rc_command "$1"

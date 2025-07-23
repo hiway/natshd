@@ -1,0 +1,14 @@
+[Unit]
+Description=NATS Shell Daemon (User)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=USER_BIN_DIR_PLACEHOLDER/natshd -config USER_CONFIG_DIR_PLACEHOLDER/config.toml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

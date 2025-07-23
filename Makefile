@@ -1,4 +1,5 @@
-.PHONY: test run debug build clean tidy
+.PHONY: test run debug build clean tidy setup install installuser uninstall uninstalluser install-help debug-os
+.PHONY: scripts-install scripts-installuser scripts-uninstall scripts-uninstalluser scripts-list scripts-backup scripts-update scripts-help
 
 # Go parameters
 GOCMD=go
@@ -9,6 +10,14 @@ GOGET=$(GOCMD) get
 GOMOD=$(GOCMD) mod
 BINARY_NAME=natshd
 BINARY_PATH=./cmd/natshd
+
+# Include OS detection and installation modules
+include mk/os-detect.mk
+include mk/install-common.mk
+include mk/scripts-management.mk
+include mk/linux-install.mk
+include mk/freebsd-install.mk
+include mk/macos-install.mk
 
 # Build the binary
 build:

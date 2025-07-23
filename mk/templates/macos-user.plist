@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>io.nats.natshd</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>USER_BIN_DIR_PLACEHOLDER/natshd</string>
+        <string>-config</string>
+        <string>USER_CONFIG_DIR_PLACEHOLDER/config.toml</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>StandardOutPath</key>
+    <string>HOME_PLACEHOLDER/Library/Logs/natshd.log</string>
+    <key>StandardErrorPath</key>
+    <string>HOME_PLACEHOLDER/Library/Logs/natshd.error.log</string>
+</dict>
+</plist>
