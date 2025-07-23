@@ -5,7 +5,7 @@
 if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
-    "name": "SystemKernelService",
+    "name": "SystemService",
     "version": "1.0.0",
     "description": "Kernel version, modules, and parameters discovery",
     "endpoints": [

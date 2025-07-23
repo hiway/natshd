@@ -18,12 +18,11 @@ type ScriptRunner interface {
 	ExecuteRequest(ctx context.Context, subject string, payload []byte) (service.ExecutionResult, error)
 }
 
-// ManagedService represents a supervised NATS microservice backed by a shell script
+// ManagedService represents a supervised NATS microservice backed by shell script(s)
 type ManagedService struct {
-	scriptPath   string
+	scripts      map[string]ScriptRunner // scriptPath -> runner mapping
 	natsConn     *nats.Conn
 	logger       zerolog.Logger
-	runner       ScriptRunner
 	definition   service.ServiceDefinition
 	natsService  micro.Service
 	initialized  bool
@@ -35,30 +34,92 @@ func NewManagedService(scriptPath string, natsConn *nats.Conn, logger zerolog.Lo
 	serviceLogger := logging.NewContextLogger(logger, "", scriptPath)
 
 	return &ManagedService{
-		scriptPath: scriptPath,
-		natsConn:   natsConn,
-		logger:     serviceLogger,
-		runner:     service.NewScriptRunner(scriptPath),
+		scripts:  make(map[string]ScriptRunner),
+		natsConn: natsConn,
+		logger:   serviceLogger,
 	}
 }
 
-// Initialize loads the service definition from the script and validates it
-func (ms *ManagedService) Initialize(ctx context.Context) error {
-	logging.LogServiceLifecycle(ms.logger, "initializing", "", ms.scriptPath)
+// AddScript adds a script to this managed service (for grouping scripts by service name)
+func (ms *ManagedService) AddScript(scriptPath string) {
+	ms.scripts[scriptPath] = service.NewScriptRunner(scriptPath)
+}
 
-	// Get service definition from script
-	definition, err := ms.runner.GetServiceDefinition(ctx)
+// Initialize loads the service definition from the scripts and validates it
+func (ms *ManagedService) Initialize(ctx context.Context) error {
+	if len(ms.scripts) == 0 {
+		return fmt.Errorf("no scripts added to service")
+	}
+
+	// Get first script path for logging purposes
+	var firstScriptPath string
+	for path := range ms.scripts {
+		firstScriptPath = path
+		break
+	}
+
+	logging.LogServiceLifecycle(ms.logger, "initializing", "", firstScriptPath)
+
+	// Get service definition from the first script to establish the service name
+	var firstRunner ScriptRunner
+	for _, runner := range ms.scripts {
+		firstRunner = runner
+		break
+	}
+
+	definition, err := firstRunner.GetServiceDefinition(ctx)
 	if err != nil {
 		logging.LogError(ms.logger, err, "failed to get service definition")
 		return fmt.Errorf("failed to get service definition: %w", err)
 	}
 
+	// Start with the first script's definition
 	ms.definition = definition
 
-	// Update logger with service name
-	ms.logger = logging.NewContextLogger(ms.logger, definition.Name, ms.scriptPath)
+	// Collect all unique endpoints from all scripts with the same service name
+	allEndpoints := make(map[string]service.Endpoint) // subject -> endpoint
+	for scriptPath, runner := range ms.scripts {
+		scriptDef, err := runner.GetServiceDefinition(ctx)
+		if err != nil {
+			logging.LogError(ms.logger, err, "failed to get service definition from script "+scriptPath)
+			continue // Skip this script but continue with others
+		}
 
-	logging.LogServiceLifecycle(ms.logger, "initialized", definition.Name, ms.scriptPath)
+		// Verify service name matches
+		if scriptDef.Name != definition.Name {
+			ms.logger.Warn().
+				Str("script", scriptPath).
+				Str("expected_name", definition.Name).
+				Str("actual_name", scriptDef.Name).
+				Msg("Script service name mismatch, skipping")
+			continue
+		}
+
+		// Add endpoints from this script
+		for _, endpoint := range scriptDef.Endpoints {
+			if existing, exists := allEndpoints[endpoint.Subject]; exists {
+				ms.logger.Warn().
+					Str("subject", endpoint.Subject).
+					Str("existing_name", existing.Name).
+					Str("new_name", endpoint.Name).
+					Msg("Duplicate endpoint subject found, keeping first")
+				continue
+			}
+			allEndpoints[endpoint.Subject] = endpoint
+		}
+	}
+
+	// Convert map back to slice
+	endpoints := make([]service.Endpoint, 0, len(allEndpoints))
+	for _, endpoint := range allEndpoints {
+		endpoints = append(endpoints, endpoint)
+	}
+	ms.definition.Endpoints = endpoints
+
+	// Update logger with service name
+	ms.logger = logging.NewContextLogger(ms.logger, definition.Name, firstScriptPath)
+
+	logging.LogServiceLifecycle(ms.logger, "initialized", definition.Name, firstScriptPath)
 	ms.initialized = true
 
 	return nil
@@ -66,10 +127,17 @@ func (ms *ManagedService) Initialize(ctx context.Context) error {
 
 // Serve implements the suture.Service interface
 func (ms *ManagedService) Serve(ctx context.Context) error {
+	// Get first script path for logging
+	var firstScriptPath string
+	for path := range ms.scripts {
+		firstScriptPath = path
+		break
+	}
+
 	ms.logger.Info().
 		Str("action", "starting").
 		Str("service", ms.definition.Name).
-		Str("script", ms.scriptPath).
+		Str("script", firstScriptPath).
 		Msg("Service lifecycle event")
 
 	// Check if NATS connection is available
@@ -120,7 +188,7 @@ func (ms *ManagedService) Serve(ctx context.Context) error {
 // createHandler creates a NATS micro handler for the given subject
 func (ms *ManagedService) createHandler(subject string) micro.Handler {
 	return micro.HandlerFunc(func(req micro.Request) {
-		ms.HandleRequest(&natsRequestWrapper{req: req, subject: subject})
+		ms.HandleRequest(&NATSRequestWrapper{req: req})
 	})
 }
 
@@ -128,8 +196,35 @@ func (ms *ManagedService) createHandler(subject string) micro.Handler {
 func (ms *ManagedService) HandleRequest(req Request) {
 	ctx := context.Background()
 
+	// Find the script that handles this subject
+	var runner ScriptRunner
+	for _, scriptRunner := range ms.scripts {
+		// Get the service definition for this script
+		def, err := scriptRunner.GetServiceDefinition(ctx)
+		if err != nil {
+			continue // Skip scripts that can't provide definition
+		}
+
+		// Check if this script handles the requested subject
+		for _, endpoint := range def.Endpoints {
+			if endpoint.Subject == req.Subject() {
+				runner = scriptRunner
+				break
+			}
+		}
+
+		if runner != nil {
+			break
+		}
+	}
+
+	if runner == nil {
+		req.RespondError(fmt.Errorf("no script found for subject: %s", req.Subject()))
+		return
+	}
+
 	// Execute the script
-	result, err := ms.runner.ExecuteRequest(ctx, req.Subject(), req.Data())
+	result, err := runner.ExecuteRequest(ctx, req.Subject(), req.Data())
 
 	// Log the request/response
 	var responseData []byte
@@ -152,7 +247,7 @@ func (ms *ManagedService) HandleRequest(req Request) {
 		if len(result.Stderr) > 0 {
 			errorMsg += fmt.Sprintf(": %s", string(result.Stderr))
 		}
-		req.RespondError(fmt.Errorf(errorMsg))
+		req.RespondError(fmt.Errorf("%s", errorMsg))
 		return
 	}
 
@@ -164,7 +259,11 @@ func (ms *ManagedService) HandleRequest(req Request) {
 
 // String implements fmt.Stringer for better logging
 func (ms *ManagedService) String() string {
-	return fmt.Sprintf("ManagedService(%s)", ms.scriptPath)
+	// Get first script path for string representation
+	for path := range ms.scripts {
+		return fmt.Sprintf("ManagedService(%s)", path)
+	}
+	return fmt.Sprintf("ManagedService(%s)", ms.definition.Name)
 }
 
 // NATSRequestWrapper wraps a NATS micro.Request to implement our Request interface
@@ -208,39 +307,4 @@ type Request interface {
 	Headers() map[string][]string
 	Respond(data []byte) error
 	RespondError(err error) error
-}
-
-// natsRequestWrapper implements Request interface for NATS micro requests
-type natsRequestWrapper struct {
-	req     micro.Request
-	subject string
-}
-
-func (w *natsRequestWrapper) Subject() string {
-	return w.subject
-}
-
-func (w *natsRequestWrapper) Data() []byte {
-	return w.req.Data()
-}
-
-func (w *natsRequestWrapper) Headers() map[string][]string {
-	headers := w.req.Headers()
-	if headers == nil {
-		return nil
-	}
-
-	result := make(map[string][]string)
-	for key, values := range headers {
-		result[key] = values
-	}
-	return result
-}
-
-func (w *natsRequestWrapper) Respond(data []byte) error {
-	return w.req.Respond(data)
-}
-
-func (w *natsRequestWrapper) RespondError(err error) error {
-	return w.req.Error("500", err.Error(), nil)
 }

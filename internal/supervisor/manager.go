@@ -30,8 +30,9 @@ type ServiceManager struct {
 	natsConn         *nats.Conn
 	logger           zerolog.Logger
 	supervisor       *suture.Supervisor
-	services         map[string]*ManagedService
-	serviceTokens    map[string]suture.ServiceToken
+	services         map[string]*ManagedService     // serviceName -> ManagedService
+	serviceTokens    map[string]suture.ServiceToken // serviceName -> token
+	scriptToService  map[string]string              // scriptPath -> serviceName
 	watcher          *fsnotify.Watcher
 	mutex            sync.RWMutex
 	debounceTracker  map[string]*FileEventTracker
@@ -53,6 +54,7 @@ func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) 
 		supervisor:            supervisor,
 		services:              make(map[string]*ManagedService),
 		serviceTokens:         make(map[string]suture.ServiceToken),
+		scriptToService:       make(map[string]string),
 		debounceTracker:       make(map[string]*FileEventTracker),
 		debounceInterval:      500 * time.Millisecond, // 500ms debounce
 		fileExecutableStatus:  make(map[string]bool),
@@ -176,32 +178,64 @@ func (sm *ServiceManager) AddService(scriptPath string) error {
 		Str("script", scriptPath).
 		Msg("Adding service")
 
-	// Check if service already exists
-	if _, exists := sm.services[scriptPath]; exists {
+	// Check if this script is already handled
+	if existingServiceName, exists := sm.scriptToService[scriptPath]; exists {
 		sm.logger.Warn().
 			Str("script", scriptPath).
-			Msg("Service already exists")
+			Str("service", existingServiceName).
+			Msg("Script already handled by service")
 		return nil
 	}
 
-	// Create managed service
+	// Get service definition from script to determine service name
+	runner := service.NewScriptRunner(scriptPath)
+	ctx := context.Background()
+	definition, err := runner.GetServiceDefinition(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get service definition: %w", err)
+	}
+
+	serviceName := definition.Name
+
+	// Check if a service with this name already exists
+	if existingService, exists := sm.services[serviceName]; exists {
+		// Add this script to the existing service
+		existingService.AddScript(scriptPath)
+		sm.scriptToService[scriptPath] = serviceName
+
+		// Re-initialize the service to pick up the new endpoints
+		if err := existingService.Initialize(ctx); err != nil {
+			return fmt.Errorf("failed to re-initialize grouped service: %w", err)
+		}
+
+		sm.logger.Info().
+			Str("script", scriptPath).
+			Str("service", serviceName).
+			Msg("Added script to existing service group")
+
+		logging.LogServiceLifecycle(sm.logger, "added", serviceName, scriptPath)
+		return nil
+	}
+
+	// Create new managed service
 	managedService := NewManagedService(scriptPath, sm.natsConn, sm.logger)
+	managedService.AddScript(scriptPath)
 
 	// Initialize the service
-	ctx := context.Background()
 	if err := managedService.Initialize(ctx); err != nil {
 		return fmt.Errorf("failed to initialize service: %w", err)
 	}
 
 	// Add to services map
-	sm.services[scriptPath] = managedService
+	sm.services[serviceName] = managedService
+	sm.scriptToService[scriptPath] = serviceName
 
 	// Add to supervisor
 	token := sm.supervisor.Add(managedService)
-	sm.serviceTokens[scriptPath] = token
+	sm.serviceTokens[serviceName] = token
 	managedService.serviceToken = token
 
-	logging.LogServiceLifecycle(sm.logger, "added", managedService.definition.Name, scriptPath)
+	logging.LogServiceLifecycle(sm.logger, "added", serviceName, scriptPath)
 
 	return nil
 }
@@ -216,25 +250,61 @@ func (sm *ServiceManager) RemoveService(scriptPath string) error {
 		Str("script", scriptPath).
 		Msg("Removing service")
 
-	// Check if service exists
-	managedService, exists := sm.services[scriptPath]
+	// Find which service this script belongs to
+	serviceName, exists := sm.scriptToService[scriptPath]
 	if !exists {
 		sm.logger.Warn().
 			Str("script", scriptPath).
-			Msg("Service does not exist")
+			Msg("Script not tracked by any service")
 		return nil
 	}
 
-	// Remove from supervisor
-	if token, exists := sm.serviceTokens[scriptPath]; exists {
-		sm.supervisor.Remove(token)
-		delete(sm.serviceTokens, scriptPath)
+	// Get the managed service
+	managedService, exists := sm.services[serviceName]
+	if !exists {
+		sm.logger.Warn().
+			Str("script", scriptPath).
+			Str("service", serviceName).
+			Msg("Service does not exist")
+		// Clean up orphaned script tracking
+		delete(sm.scriptToService, scriptPath)
+		return nil
 	}
 
-	// Remove from services map
-	delete(sm.services, scriptPath)
+	// Remove script from service
+	delete(managedService.scripts, scriptPath)
+	delete(sm.scriptToService, scriptPath)
 
-	logging.LogServiceLifecycle(sm.logger, "removed", managedService.definition.Name, scriptPath)
+	// If no scripts left in service, remove the entire service
+	if len(managedService.scripts) == 0 {
+		// Remove from supervisor
+		if token, exists := sm.serviceTokens[serviceName]; exists {
+			sm.supervisor.Remove(token)
+			delete(sm.serviceTokens, serviceName)
+		}
+
+		// Remove from services map
+		delete(sm.services, serviceName)
+
+		logging.LogServiceLifecycle(sm.logger, "removed", serviceName, scriptPath)
+	} else {
+		// Re-initialize the service to update endpoints
+		ctx := context.Background()
+		if err := managedService.Initialize(ctx); err != nil {
+			sm.logger.Error().
+				Err(err).
+				Str("service", serviceName).
+				Msg("Failed to re-initialize service after script removal")
+		}
+
+		sm.logger.Info().
+			Str("script", scriptPath).
+			Str("service", serviceName).
+			Int("remaining_scripts", len(managedService.scripts)).
+			Msg("Removed script from service group")
+
+		logging.LogServiceLifecycle(sm.logger, "script_removed", serviceName, scriptPath)
+	}
 
 	return nil
 }
@@ -254,25 +324,37 @@ func (sm *ServiceManager) RestartServiceGracefully(scriptPath string) error {
 		Str("script", scriptPath).
 		Msg("Restarting service")
 
-	// Check if service exists
-	oldService, exists := sm.services[scriptPath]
+	// Find which service this script belongs to
+	serviceName, exists := sm.scriptToService[scriptPath]
 	if !exists {
 		sm.logger.Warn().
 			Str("script", scriptPath).
+			Msg("Script not tracked by any service, cannot restart")
+		return nil
+	}
+
+	// Get the managed service
+	managedService, exists := sm.services[serviceName]
+	if !exists {
+		sm.logger.Warn().
+			Str("script", scriptPath).
+			Str("service", serviceName).
 			Msg("Service does not exist, cannot restart")
 		return nil
 	}
 
 	// Step 1: Gracefully stop the old NATS service
-	if oldService.natsService != nil {
+	if managedService.natsService != nil {
 		sm.logger.Debug().
 			Str("script", scriptPath).
+			Str("service", serviceName).
 			Msg("Stopping old NATS service")
 
-		if err := oldService.natsService.Stop(); err != nil {
+		if err := managedService.natsService.Stop(); err != nil {
 			sm.logger.Error().
 				Err(err).
 				Str("script", scriptPath).
+				Str("service", serviceName).
 				Msg("Error stopping old NATS service")
 		}
 
@@ -281,33 +363,25 @@ func (sm *ServiceManager) RestartServiceGracefully(scriptPath string) error {
 	}
 
 	// Step 2: Remove old service from supervisor
-	if token, exists := sm.serviceTokens[scriptPath]; exists {
+	if token, exists := sm.serviceTokens[serviceName]; exists {
 		sm.supervisor.Remove(token)
-		delete(sm.serviceTokens, scriptPath)
+		delete(sm.serviceTokens, serviceName)
 	}
 
-	// Step 3: Create new managed service
-	managedService := NewManagedService(scriptPath, sm.natsConn, sm.logger)
-
-	// Step 4: Initialize the service
+	// Step 3: Re-initialize the service (it will reload all scripts including the updated one)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	if err := managedService.Initialize(ctx); err != nil {
-		// Remove from services map if initialization failed
-		delete(sm.services, scriptPath)
-		return fmt.Errorf("failed to initialize restarted service: %w", err)
+		return fmt.Errorf("failed to re-initialize service after restart: %w", err)
 	}
 
-	// Step 5: Update services map
-	sm.services[scriptPath] = managedService
-
-	// Step 6: Add new service to supervisor
+	// Step 4: Add service back to supervisor
 	token := sm.supervisor.Add(managedService)
-	sm.serviceTokens[scriptPath] = token
+	sm.serviceTokens[serviceName] = token
 	managedService.serviceToken = token
 
-	logging.LogServiceLifecycle(sm.logger, "restarted", managedService.definition.Name, scriptPath)
+	logging.LogServiceLifecycle(sm.logger, "restarted", serviceName, scriptPath)
 
 	return nil
 }
@@ -478,9 +552,9 @@ func (sm *ServiceManager) executeFileEventAction(filePath, eventType string) {
 	case "write":
 		// Check if file is still valid after modification
 		if sm.IsValidScript(filePath) {
-			// Check if service exists - restart if it does, add if it doesn't
+			// Check if script is already tracked
 			sm.mutex.RLock()
-			_, exists := sm.services[filePath]
+			_, exists := sm.scriptToService[filePath]
 			sm.mutex.RUnlock()
 
 			if exists {

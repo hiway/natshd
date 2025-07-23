@@ -6,7 +6,7 @@
 if [[ "$1" == "info" ]]; then
     cat << 'EOF'
 {
-    "name": "Uptime",
+    "name": "UptimeService",
     "description": "A system monitoring microservice that provides uptime information",
     "version": "1.0.0",
     "endpoints": [

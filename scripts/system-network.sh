@@ -5,7 +5,7 @@
 if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
-    "name": "SystemNetworkService",
+    "name": "SystemService",
     "version": "1.0.0",
     "description": "Network configuration and connectivity discovery",
     "endpoints": [

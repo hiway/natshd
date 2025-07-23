@@ -41,6 +41,124 @@ func TestNewManager(t *testing.T) {
 	}
 }
 
+func TestManager_ServiceGrouping(t *testing.T) {
+	tempDir := t.TempDir()
+	logger := logging.SetupLogger("info")
+	natsConn := (*nats.Conn)(nil) // Use nil for testing
+
+	manager := NewManager(tempDir, natsConn, logger)
+
+	// Create two scripts with the same service name but different endpoints
+	script1Content := `#!/bin/bash
+if [[ "$1" == "info" ]]; then
+  cat <<EOF
+{
+  "name": "SystemService",
+  "version": "1.0.0",
+  "description": "System management service",
+  "endpoints": [
+    {
+      "name": "GetFacts",
+      "subject": "system.facts"
+    }
+  ]
+}
+EOF
+  exit 0
+fi
+echo "facts response"
+`
+
+	script2Content := `#!/bin/bash
+if [[ "$1" == "info" ]]; then
+  cat <<EOF
+{
+  "name": "SystemService",
+  "version": "1.0.0", 
+  "description": "System management service",
+  "endpoints": [
+    {
+      "name": "GetHardware",
+      "subject": "system.hardware"
+    }
+  ]
+}
+EOF
+  exit 0
+fi
+echo "hardware response"
+`
+
+	// Write the scripts
+	script1Path := filepath.Join(tempDir, "system-facts.sh")
+	script2Path := filepath.Join(tempDir, "system-hardware.sh")
+
+	err := os.WriteFile(script1Path, []byte(script1Content), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create script1: %v", err)
+	}
+
+	err = os.WriteFile(script2Path, []byte(script2Content), 0755)
+	if err != nil {
+		t.Fatalf("Failed to create script2: %v", err)
+	}
+
+	// Add both services
+	err = manager.AddService(script1Path)
+	if err != nil {
+		t.Fatalf("Failed to add script1: %v", err)
+	}
+
+	err = manager.AddService(script2Path)
+	if err != nil {
+		t.Fatalf("Failed to add script2: %v", err)
+	}
+
+	// Check that only one service is registered (grouped by name)
+	manager.mutex.RLock()
+	serviceCount := len(manager.services)
+	manager.mutex.RUnlock()
+
+	if serviceCount != 1 {
+		t.Errorf("Expected 1 grouped service, got %d services", serviceCount)
+	}
+
+	// Check that the service has both endpoints
+	manager.mutex.RLock()
+	var service *ManagedService
+	for _, svc := range manager.services {
+		service = svc
+		break
+	}
+	manager.mutex.RUnlock()
+
+	if service == nil {
+		t.Fatal("Expected to find one service")
+	}
+
+	if len(service.definition.Endpoints) != 2 {
+		t.Errorf("Expected 2 endpoints in grouped service, got %d", len(service.definition.Endpoints))
+	}
+
+	// Check that subjects are correct
+	expectedSubjects := map[string]bool{
+		"system.facts":    false,
+		"system.hardware": false,
+	}
+
+	for _, endpoint := range service.definition.Endpoints {
+		if _, exists := expectedSubjects[endpoint.Subject]; exists {
+			expectedSubjects[endpoint.Subject] = true
+		}
+	}
+
+	for subject, found := range expectedSubjects {
+		if !found {
+			t.Errorf("Expected subject %s not found in grouped service", subject)
+		}
+	}
+}
+
 func TestManager_Start(t *testing.T) {
 	// Create temporary directory for test scripts
 	tempDir := t.TempDir()
@@ -131,8 +249,8 @@ echo "test response"
 		t.Fatalf("AddService failed: %v", err)
 	}
 
-	// Get original service
-	originalService := manager.services[scriptPath]
+	// Get original service (services are now tracked by name, not path)
+	originalService := manager.services["TestService"]
 
 	// Restart the service with graceful shutdown
 	err = manager.RestartServiceGracefully(scriptPath)
@@ -140,10 +258,15 @@ echo "test response"
 		t.Fatalf("RestartServiceGracefully failed: %v", err)
 	}
 
-	// Check that a new service instance was created
-	newService := manager.services[scriptPath]
-	if originalService == newService {
-		t.Error("Expected service instance to be replaced after restart")
+	// Check that the same service instance was reused (new behavior with service grouping)
+	newService := manager.services["TestService"]
+	if originalService != newService {
+		t.Error("Expected service instance to be reused after restart (service grouping behavior)")
+	}
+
+	// Verify service is still properly initialized
+	if newService.definition.Name != "TestService" {
+		t.Error("Expected service to be properly reinitialized after restart")
 	}
 }
 
@@ -287,10 +410,15 @@ echo "not executable"
 		t.Errorf("Expected %d services, got %d", expectedServices, len(manager.services))
 	}
 
-	// Check that the valid service was discovered
-	validScriptPath := filepath.Join(tempDir, "valid.sh")
-	if _, exists := manager.services[validScriptPath]; !exists {
+	// Check that the valid service was discovered (services are now tracked by name)
+	if _, exists := manager.services["ValidService"]; !exists {
 		t.Error("Expected valid.sh to be discovered as a service")
+	}
+
+	// Check that script-to-service mapping was created
+	validScriptPath := filepath.Join(tempDir, "valid.sh")
+	if serviceName, exists := manager.scriptToService[validScriptPath]; !exists || serviceName != "ValidService" {
+		t.Error("Expected script-to-service mapping to be created for valid.sh")
 	}
 }
 
@@ -331,14 +459,19 @@ echo "test response"
 		t.Fatalf("AddService failed: %v", err)
 	}
 
-	// Check that service was added
-	if _, exists := manager.services[scriptPath]; !exists {
+	// Check that service was added (services are now tracked by name, not path)
+	if _, exists := manager.services["TestService"]; !exists {
 		t.Error("Expected service to be added to services map")
 	}
 
-	// Check that service token was stored
-	if _, exists := manager.serviceTokens[scriptPath]; !exists {
+	// Check that service token was stored (tokens are now tracked by service name)
+	if _, exists := manager.serviceTokens["TestService"]; !exists {
 		t.Error("Expected service token to be stored")
+	}
+
+	// Check that script-to-service mapping was created
+	if serviceName, exists := manager.scriptToService[scriptPath]; !exists || serviceName != "TestService" {
+		t.Error("Expected script-to-service mapping to be created")
 	}
 }
 
@@ -381,8 +514,8 @@ echo "test response"
 		t.Fatalf("AddService failed: %v", err)
 	}
 
-	// Verify service was added
-	if _, exists := manager.services[scriptPath]; !exists {
+	// Verify service was added (services are now tracked by name, not path)
+	if _, exists := manager.services["TestService"]; !exists {
 		t.Fatal("Service was not added")
 	}
 
@@ -392,9 +525,14 @@ echo "test response"
 		t.Fatalf("RemoveService failed: %v", err)
 	}
 
-	// Check that service was removed
-	if _, exists := manager.services[scriptPath]; exists {
+	// Check that service was removed (since this was the only script, the service should be removed)
+	if _, exists := manager.services["TestService"]; exists {
 		t.Error("Expected service to be removed from services map")
+	}
+
+	// Check that script-to-service mapping was removed
+	if _, exists := manager.scriptToService[scriptPath]; exists {
+		t.Error("Expected script-to-service mapping to be removed")
 	}
 }
 
@@ -437,8 +575,8 @@ echo "test response"
 		t.Fatalf("AddService failed: %v", err)
 	}
 
-	// Get original service
-	originalService := manager.services[scriptPath]
+	// Get original service (services are now tracked by name, not path)
+	originalService := manager.services["TestService"]
 
 	// Restart the service
 	err = manager.RestartService(scriptPath)
@@ -446,10 +584,15 @@ echo "test response"
 		t.Fatalf("RestartService failed: %v", err)
 	}
 
-	// Check that a new service instance was created
-	newService := manager.services[scriptPath]
-	if originalService == newService {
-		t.Error("Expected service instance to be replaced after restart")
+	// Check that the same service instance was reused (new behavior with service grouping)
+	newService := manager.services["TestService"]
+	if originalService != newService {
+		t.Error("Expected service instance to be reused after restart (service grouping behavior)")
+	}
+
+	// Verify service is still properly initialized
+	if newService.definition.Name != "TestService" {
+		t.Error("Expected service to be properly reinitialized after restart")
 	}
 }
 
@@ -494,7 +637,7 @@ echo "test response"
 				return os.WriteFile(scriptPath, []byte(scriptContent), 0755)
 			},
 			verify: func() bool {
-				_, exists := manager.services[scriptPath]
+				_, exists := manager.services["TestService"]
 				return exists
 			},
 		},
@@ -515,7 +658,7 @@ echo "test response"
 				return os.WriteFile(scriptPath, []byte(scriptContent+"# modified"), 0755)
 			},
 			verify: func() bool {
-				_, exists := manager.services[scriptPath]
+				_, exists := manager.services["TestService"]
 				return exists
 			},
 		},
@@ -536,7 +679,7 @@ echo "test response"
 				return os.Remove(scriptPath)
 			},
 			verify: func() bool {
-				_, exists := manager.services[scriptPath]
+				_, exists := manager.services["TestService"]
 				return !exists // Should not exist after removal
 			},
 		},
@@ -546,6 +689,7 @@ echo "test response"
 		t.Run(tt.name, func(t *testing.T) {
 			// Clean up services map before each test
 			manager.services = make(map[string]*ManagedService)
+			manager.scriptToService = make(map[string]string)
 
 			err := tt.setup()
 			if err != nil {

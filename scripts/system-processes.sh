@@ -5,7 +5,7 @@
 if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
-    "name": "SystemProcessesService",
+    "name": "SystemService",
     "version": "1.0.0",
     "description": "Running processes and resource usage discovery",
     "endpoints": [
