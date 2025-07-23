@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/hiway/natshd/internal/config"
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/hiway/natshd/internal/service"
 	"github.com/nats-io/nats.go"
@@ -29,15 +30,17 @@ type ManagedService struct {
 	natsService  micro.Service
 	initialized  bool
 	serviceToken suture.ServiceToken
+	config       config.Config
 }
 
-// NewManagedService creates a new managed service for the given script
-func NewManagedService(scriptPath string, natsConn *nats.Conn, logger zerolog.Logger) *ManagedService {
+// NewManagedService creates a new managed service with the provided config
+func NewManagedService(scriptPath string, natsConn *nats.Conn, logger zerolog.Logger, cfg config.Config) *ManagedService {
 	serviceLogger := logging.NewContextLogger(os.Stderr, logger.GetLevel(), "", scriptPath)
 	return &ManagedService{
 		scripts:  make(map[string]ScriptRunner),
 		natsConn: natsConn,
 		logger:   serviceLogger,
+		config:   cfg,
 	}
 }
 
@@ -98,9 +101,14 @@ func (ms *ManagedService) Initialize(ctx context.Context) error {
 
 		// Add endpoints from this script
 		for _, endpoint := range scriptDef.Endpoints {
+			// Apply hostname prefixing to the subject
+			originalSubject := endpoint.Subject
+			endpoint.Subject = ms.config.PrefixSubject(originalSubject)
+
 			if existing, exists := allEndpoints[endpoint.Subject]; exists {
 				ms.logger.Warn().
 					Str("subject", endpoint.Subject).
+					Str("original_subject", originalSubject).
 					Str("existing_name", existing.Name).
 					Str("new_name", endpoint.Name).
 					Msg("Duplicate endpoint subject found, keeping first")
@@ -228,6 +236,8 @@ func (ms *ManagedService) HandleRequest(req Request) {
 
 	// Find the script that handles this subject
 	var runner ScriptRunner
+	requestSubject := req.Subject()
+
 	for _, scriptRunner := range ms.scripts {
 		// Get the service definition for this script
 		def, err := scriptRunner.GetServiceDefinition(ctx)
@@ -236,8 +246,10 @@ func (ms *ManagedService) HandleRequest(req Request) {
 		}
 
 		// Check if this script handles the requested subject
+		// We need to compare against the hostname-prefixed subjects
 		for _, endpoint := range def.Endpoints {
-			if endpoint.Subject == req.Subject() {
+			prefixedSubject := ms.config.PrefixSubject(endpoint.Subject)
+			if prefixedSubject == requestSubject {
 				runner = scriptRunner
 				break
 			}
@@ -249,12 +261,14 @@ func (ms *ManagedService) HandleRequest(req Request) {
 	}
 
 	if runner == nil {
-		req.RespondError(fmt.Errorf("no script found for subject: %s", req.Subject()))
+		req.RespondError(fmt.Errorf("no script found for subject: %s", requestSubject))
 		return
 	}
 
-	// Execute the script
-	result, err := runner.ExecuteRequest(ctx, req.Subject(), req.Data())
+	// Execute the script with the original (unprefixed) subject
+	// We need to pass the original subject to the script, not the hostname-prefixed one
+	originalSubject := ms.stripHostnamePrefix(requestSubject)
+	result, err := runner.ExecuteRequest(ctx, originalSubject, req.Data())
 
 	// Log the request/response
 	var responseData []byte
@@ -262,7 +276,7 @@ func (ms *ManagedService) HandleRequest(req Request) {
 		responseData = result.Stdout
 	}
 
-	logging.LogRequestResponse(ms.logger, req.Subject(), req.Data(), responseData, err)
+	logging.LogRequestResponse(ms.logger, requestSubject, req.Data(), responseData, err)
 
 	// Send response
 	if err != nil {
@@ -285,6 +299,24 @@ func (ms *ManagedService) HandleRequest(req Request) {
 	if err := req.Respond(result.Stdout); err != nil {
 		logging.LogError(ms.logger, err, "failed to send response")
 	}
+}
+
+// stripHostnamePrefix removes the hostname prefix from a subject
+// Returns the original subject without the hostname prefix
+func (ms *ManagedService) stripHostnamePrefix(subject string) string {
+	hostname, err := ms.config.ResolveHostname()
+	if err != nil {
+		// If we can't resolve hostname, return the subject as-is
+		return subject
+	}
+
+	prefix := hostname + "."
+	if len(subject) > len(prefix) && subject[:len(prefix)] == prefix {
+		return subject[len(prefix):]
+	}
+
+	// If no prefix found, return as-is
+	return subject
 }
 
 // String implements fmt.Stringer for better logging

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/hiway/natshd/internal/config"
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/hiway/natshd/internal/service"
 	"github.com/nats-io/nats.go"
@@ -37,13 +38,15 @@ type ServiceManager struct {
 	mutex            sync.RWMutex
 	debounceTracker  map[string]*FileEventTracker
 	debounceInterval time.Duration
+	config           *config.Config
 	// Track file executable status for detecting permission changes
 	fileExecutableStatus  map[string]bool
 	permissionCheckTicker *time.Ticker
 }
 
 // NewManager creates a new ServiceManager
-func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) *ServiceManager {
+// NewManager creates a new ServiceManager with the provided config
+func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger, cfg config.Config) *ServiceManager {
 	// Create a supervisor for managing services
 	supervisor := suture.NewSimple("ServiceSupervisor")
 
@@ -57,6 +60,7 @@ func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) 
 		scriptToService:       make(map[string]string),
 		debounceTracker:       make(map[string]*FileEventTracker),
 		debounceInterval:      500 * time.Millisecond, // 500ms debounce
+		config:                &cfg,
 		fileExecutableStatus:  make(map[string]bool),
 		permissionCheckTicker: time.NewTicker(5 * time.Second), // Check every 5 seconds
 	}
@@ -212,8 +216,8 @@ func (sm *ServiceManager) AddService(scriptPath string) error {
 		return nil
 	}
 
-	// Create new managed service
-	managedService := NewManagedService(scriptPath, sm.natsConn, sm.logger)
+	// Create new managed service with config
+	managedService := NewManagedService(scriptPath, sm.natsConn, sm.logger, *sm.config)
 	managedService.AddScript(scriptPath)
 
 	// Initialize the service

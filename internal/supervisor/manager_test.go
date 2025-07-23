@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hiway/natshd/internal/config"
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/nats-io/nats.go"
 )
@@ -16,7 +17,7 @@ func TestNewManager(t *testing.T) {
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 	scriptsPath := "/path/to/scripts"
 
-	manager := NewManager(scriptsPath, natsConn, logger)
+	manager := NewManager(scriptsPath, natsConn, logger, config.DefaultConfig())
 
 	if manager == nil {
 		t.Fatal("Expected Manager to be created")
@@ -46,7 +47,7 @@ func TestManager_ServiceGrouping(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	// Create two scripts with the same service name but different endpoints
 	script1Content := `#!/usr/bin/env bash
@@ -140,10 +141,15 @@ echo "hardware response"
 		t.Errorf("Expected 2 endpoints in grouped service, got %d", len(service.definition.Endpoints))
 	}
 
-	// Check that subjects are correct
+	// Check that subjects are correct with hostname prefix
+	hostname, err := os.Hostname()
+	if err != nil {
+		t.Fatalf("Failed to get hostname: %v", err)
+	}
+
 	expectedSubjects := map[string]bool{
-		"system.facts":    false,
-		"system.hardware": false,
+		hostname + ".system.facts":    false,
+		hostname + ".system.hardware": false,
 	}
 
 	for _, endpoint := range service.definition.Endpoints {
@@ -165,7 +171,7 @@ func TestManager_Start(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	// Create a test script
 	scriptPath := filepath.Join(tempDir, "test.sh")
@@ -215,7 +221,7 @@ func TestManager_RestartServiceWithGracefulShutdown(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
@@ -275,7 +281,7 @@ func TestManager_FileEventDebouncing(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 	scriptContent := `#!/usr/bin/env bash
@@ -339,7 +345,7 @@ func TestManager_DiscoverServices(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	// Create test scripts
 	scripts := []struct {
@@ -427,7 +433,7 @@ func TestManager_AddService(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 	scriptContent := `#!/usr/bin/env bash
@@ -480,7 +486,7 @@ func TestManager_RemoveService(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
@@ -541,7 +547,7 @@ func TestManager_RestartService(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
@@ -601,7 +607,7 @@ func TestManager_HandleFileEvent(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
 	scriptContent := `#!/usr/bin/env bash
@@ -722,7 +728,7 @@ func TestManager_IsValidScript(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	manager := NewManager(tempDir, natsConn, logger)
+	manager := NewManager(tempDir, natsConn, logger, config.DefaultConfig())
 
 	tests := []struct {
 		name        string
@@ -796,7 +802,7 @@ func TestManager_String(t *testing.T) {
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 	scriptsPath := "/path/to/scripts"
 
-	manager := NewManager(scriptsPath, natsConn, logger)
+	manager := NewManager(scriptsPath, natsConn, logger, config.DefaultConfig())
 
 	expected := "ServiceManager(/path/to/scripts)"
 	if manager.String() != expected {

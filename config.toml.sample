@@ -10,3 +10,8 @@ scripts_path = "./scripts"
 
 # Logging level: trace, debug, info, warn, error
 log_level = "info"
+
+# Hostname for subject prefixing
+# Use "auto" to automatically detect system hostname
+# Or specify explicit hostname like "web-server-01"
+hostname = "auto"

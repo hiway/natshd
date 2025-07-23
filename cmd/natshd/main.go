@@ -150,7 +150,7 @@ func runApplication(ctx context.Context, options CLIOptions) error {
 		Msg("Connected to NATS server")
 
 	// Create service manager
-	serviceManager := supervisor.NewManager(cfg.ScriptsPath, natsConn, logger)
+	serviceManager := supervisor.NewManager(cfg.ScriptsPath, natsConn, logger, *cfg)
 
 	logger.Info().
 		Str("scripts_path", cfg.ScriptsPath).

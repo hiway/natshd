@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/hiway/natshd/internal/config"
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/hiway/natshd/internal/service"
 	"github.com/nats-io/nats.go"
@@ -16,7 +17,7 @@ func TestNewManagedService(t *testing.T) {
 	scriptPath := "/path/to/script.sh"
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
 
-	managedService := NewManagedService(scriptPath, natsConn, logger)
+	managedService := NewManagedService(scriptPath, natsConn, logger, config.DefaultConfig())
 
 	if managedService == nil {
 		t.Fatal("Expected ManagedService to be created")
@@ -84,7 +85,7 @@ func TestManagedService_Initialize(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := logging.SetupLogger("info")
 			natsConn := (*nats.Conn)(nil) // Use nil for testing
-			managedService := NewManagedService("test.sh", natsConn, logger)
+			managedService := NewManagedService("test.sh", natsConn, logger, config.DefaultConfig())
 
 			// Add the script to the service for new service grouping structure
 			managedService.AddScript("test.sh")
@@ -118,7 +119,7 @@ func TestManagedService_Initialize(t *testing.T) {
 func TestManagedService_InitializeWithMetadata(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
-	managedService := NewManagedService("test.sh", natsConn, logger)
+	managedService := NewManagedService("test.sh", natsConn, logger, config.DefaultConfig())
 
 	// Add the script to the service
 	managedService.AddScript("test.sh")
@@ -199,7 +200,7 @@ func TestManagedService_InitializeWithMetadata(t *testing.T) {
 func TestManagedService_Serve(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
-	managedService := NewManagedService("test.sh", natsConn, logger)
+	managedService := NewManagedService("test.sh", natsConn, logger, config.DefaultConfig())
 
 	// Mock successful initialization
 	managedService.definition = service.ServiceDefinition{
@@ -232,7 +233,7 @@ func TestManagedService_Serve(t *testing.T) {
 // func TestManagedService_HandleRequest(t *testing.T) {
 // 	logger := logging.SetupLogger("info")
 // 	natsConn := (*nats.Conn)(nil) // Use nil for testing
-// 	managedService := NewManagedService("test.sh", natsConn, logger)
+// 	managedService := NewManagedService("test.sh", natsConn, logger, config.DefaultConfig())
 
 // 	// Set up mock script runner with expected response
 // 	// TODO: Update for new service grouping structure
@@ -274,7 +275,7 @@ func TestManagedService_Serve(t *testing.T) {
 func TestManagedService_HandleRequestWithError(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
-	managedService := NewManagedService("test.sh", natsConn, logger)
+	managedService := NewManagedService("test.sh", natsConn, logger, config.DefaultConfig())
 
 	// Set up mock script runner with error response
 	// TODO: Update for new service grouping structure
@@ -313,7 +314,7 @@ func TestManagedService_HandleRequestWithError(t *testing.T) {
 func TestManagedService_String(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing
-	managedService := NewManagedService("/path/to/test.sh", natsConn, logger)
+	managedService := NewManagedService("/path/to/test.sh", natsConn, logger, config.DefaultConfig())
 
 	// Add the script to the service (new service grouping structure)
 	managedService.AddScript("/path/to/test.sh")

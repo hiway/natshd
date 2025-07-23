@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/hiway/natshd/internal/config"
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/hiway/natshd/internal/service"
 	"github.com/nats-io/nats.go"
@@ -15,7 +16,8 @@ func TestManagedService_IntegrationWithGreetingScript(t *testing.T) {
 
 	// Use the actual greeting script
 	scriptPath := "../../scripts/greeting.sh"
-	managedService := NewManagedService(scriptPath, natsConn, logger)
+	cfg := config.DefaultConfig()
+	managedService := NewManagedService(scriptPath, natsConn, logger, cfg)
 	managedService.AddScript(scriptPath)
 
 	ctx := context.Background()
