@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetProcesses",
             "subject": "system.processes",
-            "description": "Get running processes and their resource usage"
+            "description": "Get running processes and their resource usage",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

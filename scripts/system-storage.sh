@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetStorage",
             "subject": "system.storage",
-            "description": "Gather filesystem usage, mount points, and disk information"
+            "description": "Gather filesystem usage, mount points, and disk information",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

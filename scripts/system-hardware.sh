@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetHardware",
             "subject": "system.hardware",
-            "description": "Gather detailed hardware information"
+            "description": "Gather detailed hardware information",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

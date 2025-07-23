@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetUsers",
             "subject": "system.users",
-            "description": "Get user accounts, groups, and login information"
+            "description": "Get user accounts, groups, and login information",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

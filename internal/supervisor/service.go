@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hiway/natshd/internal/logging"
@@ -161,9 +162,42 @@ func (ms *ManagedService) Serve(ctx context.Context) error {
 	// Add endpoints
 	for _, endpoint := range ms.definition.Endpoints {
 		endpoint := endpoint // capture loop variable
+
+		// Prepare endpoint options
+		opts := []micro.EndpointOpt{
+			micro.WithEndpointSubject(endpoint.Subject),
+		}
+
+		// Convert metadata to NATS format if present
+		if endpoint.Metadata != nil {
+			natsMetadata := make(map[string]string)
+
+			// Convert complex metadata to JSON strings
+			for key, value := range endpoint.Metadata {
+				if jsonBytes, err := json.Marshal(value); err == nil {
+					natsMetadata[key] = string(jsonBytes)
+				}
+			}
+
+			// Add description as a simple metadata field if present
+			if endpoint.Description != "" {
+				natsMetadata["description"] = endpoint.Description
+			}
+
+			if len(natsMetadata) > 0 {
+				opts = append(opts, micro.WithEndpointMetadata(natsMetadata))
+			}
+		} else if endpoint.Description != "" {
+			// If no complex metadata but description exists, add it
+			natsMetadata := map[string]string{
+				"description": endpoint.Description,
+			}
+			opts = append(opts, micro.WithEndpointMetadata(natsMetadata))
+		}
+
 		err := service.AddEndpoint(endpoint.Name, micro.HandlerFunc(func(req micro.Request) {
 			ms.HandleRequest(&NATSRequestWrapper{req: req})
-		}), micro.WithEndpointSubject(endpoint.Subject))
+		}), opts...)
 		if err != nil {
 			return fmt.Errorf("failed to add endpoint %s: %w", endpoint.Name, err)
 		}

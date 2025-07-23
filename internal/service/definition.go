@@ -16,8 +16,10 @@ type ServiceDefinition struct {
 
 // Endpoint represents a single NATS subject endpoint for a service
 type Endpoint struct {
-	Name    string `json:"name"`
-	Subject string `json:"subject"`
+	Name        string                 `json:"name"`
+	Subject     string                 `json:"subject"`
+	Description string                 `json:"description,omitempty"`
+	Metadata    map[string]interface{} `json:"metadata,omitempty"`
 }
 
 // Validate checks if the service definition is valid

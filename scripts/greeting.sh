@@ -14,12 +14,35 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "Greet",
             "subject": "greeting.greet",
-            "description": "Generates a personalized greeting message"
+            "description": "Generates a personalized greeting message",
+            "metadata": {
+                "parameters": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the person to greet",
+                        "default": "World"
+                    },
+                    "greeting": {
+                        "type": "string",
+                        "description": "The greeting message to use",
+                        "default": "Hello"
+                    }
+                }
+            }
         },
         {
             "name": "Farewell", 
             "subject": "greeting.farewell",
-            "description": "Generates a farewell message"
+            "description": "Generates a farewell message",
+            "metadata": {
+                "parameters": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the person to bid farewell",
+                        "default": "Friend"
+                    }
+                }
+            }
         }
     ]
 }

@@ -93,6 +93,62 @@ func TestServiceDefinition_UnmarshalJSON(t *testing.T) {
 			expectError: false,
 		},
 		{
+			name: "endpoint with metadata",
+			jsonData: `{
+				"name": "MetadataService",
+				"version": "1.0.0",
+				"description": "Service with endpoint metadata",
+				"endpoints": [
+					{
+						"name": "ProcessData",
+						"subject": "data.process",
+						"description": "Processes data with parameters",
+						"metadata": {
+							"parameters": {
+								"input": {
+									"type": "string",
+									"description": "Input data to process",
+									"required": true
+								},
+								"format": {
+									"type": "string",
+									"description": "Output format",
+									"default": "json"
+								}
+							}
+						}
+					}
+				]
+			}`,
+			expectedDef: ServiceDefinition{
+				Name:        "MetadataService",
+				Version:     "1.0.0",
+				Description: "Service with endpoint metadata",
+				Endpoints: []Endpoint{
+					{
+						Name:        "ProcessData",
+						Subject:     "data.process",
+						Description: "Processes data with parameters",
+						Metadata: map[string]interface{}{
+							"parameters": map[string]interface{}{
+								"input": map[string]interface{}{
+									"type":        "string",
+									"description": "Input data to process",
+									"required":    true,
+								},
+								"format": map[string]interface{}{
+									"type":        "string",
+									"description": "Output format",
+									"default":     "json",
+								},
+							},
+						},
+					},
+				},
+			},
+			expectError: false,
+		},
+		{
 			name: "invalid JSON",
 			jsonData: `{
 				"name": "BadService"
@@ -146,6 +202,29 @@ func TestServiceDefinition_UnmarshalJSON(t *testing.T) {
 				}
 				if endpoint.Subject != expected.Subject {
 					t.Errorf("Endpoint %d: Expected Subject %s, got %s", i, expected.Subject, endpoint.Subject)
+				}
+				if endpoint.Description != expected.Description {
+					t.Errorf("Endpoint %d: Expected Description %s, got %s", i, expected.Description, endpoint.Description)
+				}
+				// Compare metadata if present
+				if expected.Metadata != nil {
+					if endpoint.Metadata == nil {
+						t.Errorf("Endpoint %d: Expected metadata but got nil", i)
+					} else {
+						// Deep comparison would be complex, just check if it's not nil and has expected keys
+						if params, ok := expected.Metadata["parameters"]; ok {
+							if actualParams, exists := endpoint.Metadata["parameters"]; !exists {
+								t.Errorf("Endpoint %d: Expected parameters in metadata", i)
+							} else {
+								// Basic validation that parameters exist
+								expectedParams := params.(map[string]interface{})
+								actualParamsMap := actualParams.(map[string]interface{})
+								if len(actualParamsMap) != len(expectedParams) {
+									t.Errorf("Endpoint %d: Expected %d parameters, got %d", i, len(expectedParams), len(actualParamsMap))
+								}
+							}
+						}
+					}
 				}
 			}
 		})

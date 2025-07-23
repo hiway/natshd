@@ -115,6 +115,87 @@ func TestManagedService_Initialize(t *testing.T) {
 	}
 }
 
+func TestManagedService_InitializeWithMetadata(t *testing.T) {
+	logger := logging.SetupLogger("info")
+	natsConn := (*nats.Conn)(nil) // Use nil for testing
+	managedService := NewManagedService("test.sh", natsConn, logger)
+
+	// Add the script to the service
+	managedService.AddScript("test.sh")
+
+	// Service definition with endpoint metadata
+	scriptResponse := `{
+		"name": "GreetingService",
+		"version": "1.0.0",
+		"description": "A greeting service with metadata",
+		"endpoints": [
+			{
+				"name": "Greet",
+				"subject": "greeting.greet",
+				"description": "Generates personalized greetings",
+				"metadata": {
+					"parameters": {
+						"name": {
+							"type": "string",
+							"description": "Name of person to greet",
+							"default": "World"
+						},
+						"greeting": {
+							"type": "string", 
+							"description": "Greeting message",
+							"default": "Hello"
+						}
+					}
+				}
+			}
+		]
+	}`
+
+	mockRunner := &MockScriptRunner{
+		infoResponse: scriptResponse,
+	}
+	managedService.scripts["test.sh"] = mockRunner
+
+	ctx := context.Background()
+	err := managedService.Initialize(ctx)
+
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+
+	// Verify metadata was parsed correctly
+	if len(managedService.definition.Endpoints) != 1 {
+		t.Fatalf("Expected 1 endpoint, got %d", len(managedService.definition.Endpoints))
+	}
+
+	endpoint := managedService.definition.Endpoints[0]
+	if endpoint.Metadata == nil {
+		t.Error("Expected endpoint metadata to be parsed")
+	}
+
+	if endpoint.Description != "Generates personalized greetings" {
+		t.Errorf("Expected description 'Generates personalized greetings', got '%s'", endpoint.Description)
+	}
+
+	// Check metadata structure
+	if params, ok := endpoint.Metadata["parameters"]; ok {
+		paramsMap := params.(map[string]interface{})
+		if len(paramsMap) != 2 {
+			t.Errorf("Expected 2 parameters in metadata, got %d", len(paramsMap))
+		}
+
+		if _, exists := paramsMap["name"]; !exists {
+			t.Error("Expected 'name' parameter in metadata")
+		}
+
+		if _, exists := paramsMap["greeting"]; !exists {
+			t.Error("Expected 'greeting' parameter in metadata")
+		}
+	} else {
+		t.Error("Expected 'parameters' key in metadata")
+	}
+}
+
 func TestManagedService_Serve(t *testing.T) {
 	logger := logging.SetupLogger("info")
 	natsConn := (*nats.Conn)(nil) // Use nil for testing

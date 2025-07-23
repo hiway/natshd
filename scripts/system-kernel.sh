@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetKernel",
             "subject": "system.kernel",
-            "description": "Get kernel version, loaded modules, and system parameters"
+            "description": "Get kernel version, loaded modules, and system parameters",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

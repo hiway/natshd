@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetNetwork",
             "subject": "system.network",
-            "description": "Gather network interfaces, routes, and DNS configuration"
+            "description": "Gather network interfaces, routes, and DNS configuration",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

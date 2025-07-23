@@ -12,7 +12,11 @@ if [[ "$1" == "info" ]]; then
         {
             "name": "GetFacts",
             "subject": "system.facts",
-            "description": "Gather comprehensive system information"
+            "description": "Gather comprehensive system information",
+            "metadata": {
+                "parameters": {},
+                "notes": "This endpoint does not require any parameters. Send an empty JSON object: {}."
+            }
         }
     ]
 }

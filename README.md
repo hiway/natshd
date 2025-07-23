@@ -57,12 +57,11 @@ log_level = "info"
 
 ## Writing Service Scripts
 
+
 Each shell script becomes a microservice by implementing two simple requirements:
 
 1. **Service Discovery**: Respond to `info` argument with service metadata
 2. **Request Handling**: Process requests from stdin and respond via stdout
-
-**Service Grouping**: Scripts that return the same service name in their `info` response are automatically grouped together under a single NATS microservice. This allows you to split complex services across multiple files while maintaining a single service registration.
 
 ### Example: Simple Greeting Service
 
@@ -108,6 +107,8 @@ EOF
 ### Example: Service Grouping
 
 You can create multiple script files that share the same service name:
+
+**Service Grouping**: Scripts that return the same service name in their `info` response are automatically grouped together under a single NATS microservice. This allows you to split complex services across multiple files while maintaining a single service registration.
 
 **scripts/system-facts.sh**:
 
@@ -160,6 +161,67 @@ echo '{"cpu": "'$(nproc)'", "memory": "'$(free -h | awk '/^Mem:/ {print $2}')'"}
 ```
 
 Both scripts will be grouped under a single "SystemService" microservice with endpoints for both `system.facts` and `system.hardware`.
+
+### Example: Metadata
+
+You can include a `metadata` field in each endpoint definition to describe parameters, types, and other details. This metadata will be visible in `nats micro info` output and is passed through to the NATS microservice registry.
+
+```bash
+#!/bin/bash
+
+# Service definition with endpoint metadata
+if [[ "$1" == "info" ]]; then
+    cat <<EOF
+{
+    "name": "GreetingService",
+    "version": "1.0.0",
+    "description": "A greeting service with endpoint metadata",
+    "endpoints": [
+        {
+            "name": "Greet",
+            "subject": "greeting.greet",
+            "description": "Generates a personalized greeting message",
+            "metadata": {
+                "parameters": {
+                    "name": {
+                        "type": "string",
+                        "description": "The name of the person to greet",
+                        "default": "World"
+                    },
+                    "greeting": {
+                        "type": "string",
+                        "description": "The greeting message to use",
+                        "default": "Hello"
+                    }
+                }
+            }
+        }
+    ]
+}
+EOF
+    exit 0
+fi
+
+# Request handling
+SUBJECT="$1"
+REQUEST=$(cat)
+
+# Extract parameters from JSON request
+NAME=$(echo "$REQUEST" | jq -r '.name // "World"')
+GREETING=$(echo "$REQUEST" | jq -r '.greeting // "Hello"')
+
+# Generate response
+cat <<EOF
+{
+    "success": true,
+    "message": "$GREETING, $NAME!",
+    "timestamp": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+    "service": "GreetingService",
+    "endpoint": "Greet",
+    "subject": "$SUBJECT"
+}
+EOF
+```
 
 ### Make Scripts Executable
 
