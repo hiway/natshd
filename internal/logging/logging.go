@@ -55,11 +55,10 @@ func NewContextLogger(writer io.Writer, level zerolog.Level, serviceName, script
 
 // LogRequestResponse logs NATS request/response interactions
 func LogRequestResponse(logger zerolog.Logger, subject string, request, response []byte, err error) {
-	event := logger.Info()
-
-	if err != nil {
-		event = logger.Error().Err(err)
-	}
+		event := logger.Debug()
+		if err != nil {
+			event = logger.Error().Err(err)
+		}
 
 	event = event.
 		Str("subject", subject).

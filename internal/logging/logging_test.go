@@ -164,7 +164,7 @@ func TestNewContextLogger(t *testing.T) {
 
 func TestLogRequestResponse(t *testing.T) {
 	var buf bytes.Buffer
-	logger := SetupLoggerWithWriter(&buf, "info")
+	logger := SetupLoggerWithWriter(&buf, "debug")
 
 	LogRequestResponse(logger, "test.subject", []byte(`{"input":"data"}`), []byte(`{"output":"result"}`), nil)
 
@@ -187,9 +187,9 @@ func TestLogRequestResponse(t *testing.T) {
 		t.Errorf("Expected response payload in log")
 	}
 
-	if logEntry["level"] != "info" {
-		t.Errorf("Expected level 'info' for successful request")
-	}
+       if logEntry["level"] != "debug" {
+	       t.Errorf("Expected level 'debug' for successful request")
+       }
 }
 
 func TestLogRequestResponseWithError(t *testing.T) {
