@@ -64,10 +64,9 @@ func NewManager(scriptsPath string, natsConn *nats.Conn, logger zerolog.Logger) 
 
 // Start begins the service manager, discovering services and watching for changes
 func (sm *ServiceManager) Start(ctx context.Context) error {
-	sm.logger.Info().
-		Str("action", "starting").
-		Str("scripts_path", sm.scriptsPath).
-		Msg("Service manager starting")
+	logging.LogManagerOperation(sm.logger, "starting", map[string]interface{}{
+		"scripts_path": sm.scriptsPath,
+	})
 
 	// Discover existing services
 	if err := sm.DiscoverServices(); err != nil {
@@ -99,9 +98,7 @@ func (sm *ServiceManager) Start(ctx context.Context) error {
 
 // Stop gracefully stops the service manager
 func (sm *ServiceManager) Stop() {
-	sm.logger.Info().
-		Str("action", "stopping").
-		Msg("Service manager stopping")
+	logging.LogManagerOperation(sm.logger, "stopping", nil)
 
 	if sm.watcher != nil {
 		sm.watcher.Close()
@@ -116,10 +113,9 @@ func (sm *ServiceManager) Stop() {
 
 // DiscoverServices scans the scripts directory for valid shell scripts
 func (sm *ServiceManager) DiscoverServices() error {
-	sm.logger.Info().
-		Str("action", "discovering").
-		Str("path", sm.scriptsPath).
-		Msg("Discovering services")
+	logging.LogManagerOperation(sm.logger, "discovering", map[string]interface{}{
+		"path": sm.scriptsPath,
+	})
 
 	// Check if scripts directory exists
 	if _, err := os.Stat(sm.scriptsPath); os.IsNotExist(err) {
@@ -161,9 +157,9 @@ func (sm *ServiceManager) DiscoverServices() error {
 		return fmt.Errorf("failed to walk scripts directory: %w", err)
 	}
 
-	sm.logger.Info().
-		Int("count", len(sm.services)).
-		Msg("Service discovery completed")
+	logging.LogManagerOperation(sm.logger, "discovery_completed", map[string]interface{}{
+		"count": len(sm.services),
+	})
 
 	return nil
 }
@@ -173,10 +169,9 @@ func (sm *ServiceManager) AddService(scriptPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sm.logger.Info().
-		Str("action", "adding").
-		Str("script", scriptPath).
-		Msg("Adding service")
+	logging.LogManagerOperation(sm.logger, "adding", map[string]interface{}{
+		"script": scriptPath,
+	})
 
 	// Check if this script is already handled
 	if existingServiceName, exists := sm.scriptToService[scriptPath]; exists {
@@ -245,10 +240,9 @@ func (sm *ServiceManager) RemoveService(scriptPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sm.logger.Info().
-		Str("action", "removing").
-		Str("script", scriptPath).
-		Msg("Removing service")
+	logging.LogManagerOperation(sm.logger, "removing", map[string]interface{}{
+		"script": scriptPath,
+	})
 
 	// Find which service this script belongs to
 	serviceName, exists := sm.scriptToService[scriptPath]
@@ -319,10 +313,9 @@ func (sm *ServiceManager) RestartServiceGracefully(scriptPath string) error {
 	sm.mutex.Lock()
 	defer sm.mutex.Unlock()
 
-	sm.logger.Info().
-		Str("action", "restarting").
-		Str("script", scriptPath).
-		Msg("Restarting service")
+	logging.LogManagerOperation(sm.logger, "restarting", map[string]interface{}{
+		"script": scriptPath,
+	})
 
 	// Find which service this script belongs to
 	serviceName, exists := sm.scriptToService[scriptPath]
@@ -427,9 +420,9 @@ func (sm *ServiceManager) setupFileWatcher() error {
 		return fmt.Errorf("failed to watch scripts directory: %w", err)
 	}
 
-	sm.logger.Info().
-		Str("path", sm.scriptsPath).
-		Msg("File watcher setup completed")
+	logging.LogManagerOperation(sm.logger, "file_watcher_setup", map[string]interface{}{
+		"path": sm.scriptsPath,
+	})
 
 	return nil
 }

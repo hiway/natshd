@@ -132,7 +132,7 @@ func TestLoggerLevels(t *testing.T) {
 func TestNewContextLogger(t *testing.T) {
 	// Ensure global level is set to Info for this test
 	zerolog.SetGlobalLevel(zerolog.InfoLevel)
-	
+
 	var buf bytes.Buffer
 
 	contextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "test-service", "script.sh")
@@ -142,7 +142,7 @@ func TestNewContextLogger(t *testing.T) {
 	if output == "" {
 		t.Fatalf("No output in buffer")
 	}
-	
+
 	var logEntry map[string]interface{}
 	err := json.Unmarshal([]byte(output), &logEntry)
 	if err != nil {
@@ -241,6 +241,63 @@ func TestLogServiceLifecycle(t *testing.T) {
 	}
 }
 
+func TestLogServiceLifecycleLevels(t *testing.T) {
+	tests := []struct {
+		name          string
+		action        string
+		loggerLevel   string
+		expectedLevel string
+		shouldLog     bool
+	}{
+		// Info level actions (should log at info level)
+		{"added action logs at info", "added", "info", "info", true},
+		{"removed action logs at info", "removed", "info", "info", true},
+		{"restarted action logs at info", "restarted", "info", "info", true},
+		{"starting action logs at info", "starting", "info", "info", true},
+
+		// Debug level actions (should log at debug level)
+		{"initializing action logs at debug", "initializing", "debug", "debug", true},
+		{"initialized action logs at debug", "initialized", "debug", "debug", true},
+		{"script_removed action logs at debug", "script_removed", "debug", "debug", true},
+
+		// Info logger should not see debug level actions
+		{"initializing not visible at info level", "initializing", "info", "debug", false},
+		{"initialized not visible at info level", "initialized", "info", "debug", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := SetupLoggerWithWriter(&buf, tt.loggerLevel)
+
+			LogServiceLifecycle(logger, tt.action, "TestService", "test.sh")
+
+			output := buf.String()
+			hasOutput := len(strings.TrimSpace(output)) > 0
+
+			if tt.shouldLog && !hasOutput {
+				t.Errorf("Expected log output but got none for action %s", tt.action)
+			}
+
+			if !tt.shouldLog && hasOutput {
+				t.Errorf("Expected no log output but got: %s", output)
+			}
+
+			if hasOutput {
+				var logEntry map[string]interface{}
+				err := json.Unmarshal([]byte(output), &logEntry)
+				if err != nil {
+					t.Fatalf("Failed to parse log as JSON: %v", err)
+				}
+
+				if logEntry["level"] != tt.expectedLevel {
+					t.Errorf("Expected level '%s', got %v", tt.expectedLevel, logEntry["level"])
+				}
+			}
+		})
+	}
+}
+
 func TestLogServiceLifecycleNoDuplicateFields(t *testing.T) {
 	var buf bytes.Buffer
 
@@ -287,8 +344,11 @@ func TestLogServiceLifecycleNoDuplicateFields(t *testing.T) {
 func TestLogServiceLifecycleEmptyToPopulatedService(t *testing.T) {
 	var buf bytes.Buffer
 
+	// Ensure global level is set to Debug for this test
+	zerolog.SetGlobalLevel(zerolog.DebugLevel)
+
 	// Create a context logger with empty service field (simulating initial ManagedService state)
-	emptyContextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "", "/path/to/script.sh")
+	emptyContextLogger := NewContextLogger(&buf, zerolog.DebugLevel, "", "/path/to/script.sh")
 
 	// Log a service lifecycle event with empty context - this should only show empty service
 	LogServiceLifecycle(emptyContextLogger, "initializing", "GreetingService", "/path/to/script.sh")
@@ -297,9 +357,9 @@ func TestLogServiceLifecycleEmptyToPopulatedService(t *testing.T) {
 	buf.Reset()
 
 	// Now create a properly initialized logger with the service name (simulating post-initialization)
-	populatedContextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "GreetingService", "/path/to/script.sh")
+	populatedContextLogger := NewContextLogger(&buf, zerolog.DebugLevel, "GreetingService", "/path/to/script.sh")
 
-	// This should show the populated service name
+	// This should show the populated service name (using debug level since initialized logs at debug level)
 	LogServiceLifecycle(populatedContextLogger, "initialized", "GreetingService", "/path/to/script.sh")
 
 	logOutput := buf.String()
@@ -328,4 +388,117 @@ type TestError struct {
 
 func (e *TestError) Error() string {
 	return e.message
+}
+
+func TestLogManagerOperation(t *testing.T) {
+	tests := []struct {
+		name          string
+		action        string
+		data          map[string]interface{}
+		loggerLevel   string
+		expectedLevel string
+		shouldLog     bool
+		expectedMsg   string
+	}{
+		// Info level operations
+		{"starting logs at info", "starting", map[string]interface{}{"scripts_path": "/test"}, "info", "info", true, "Service manager starting"},
+		{"stopping logs at info", "stopping", nil, "info", "info", true, "Service manager stopping"},
+		{"discovery_completed logs at info", "discovery_completed", map[string]interface{}{"count": 3}, "info", "info", true, "Service discovery completed"},
+
+		// Debug level operations
+		{"discovering logs at debug", "discovering", map[string]interface{}{"path": "/test"}, "debug", "debug", true, "Discovering services"},
+		{"file_watcher_setup logs at debug", "file_watcher_setup", map[string]interface{}{"path": "/test"}, "debug", "debug", true, "File watcher setup completed"},
+		{"adding logs at debug", "adding", map[string]interface{}{"script": "test.sh"}, "debug", "debug", true, "Adding service"},
+
+		// Info logger should not see debug operations
+		{"discovering not visible at info level", "discovering", map[string]interface{}{"path": "/test"}, "info", "debug", false, "Discovering services"},
+		{"adding not visible at info level", "adding", map[string]interface{}{"script": "test.sh"}, "info", "debug", false, "Adding service"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var buf bytes.Buffer
+			logger := SetupLoggerWithWriter(&buf, tt.loggerLevel)
+
+			LogManagerOperation(logger, tt.action, tt.data)
+
+			output := buf.String()
+			hasOutput := len(strings.TrimSpace(output)) > 0
+
+			if tt.shouldLog && !hasOutput {
+				t.Errorf("Expected log output but got none for action %s", tt.action)
+			}
+
+			if !tt.shouldLog && hasOutput {
+				t.Errorf("Expected no log output but got: %s", output)
+			}
+
+			if hasOutput {
+				var logEntry map[string]interface{}
+				err := json.Unmarshal([]byte(output), &logEntry)
+				if err != nil {
+					t.Fatalf("Failed to parse log as JSON: %v", err)
+				}
+
+				if logEntry["level"] != tt.expectedLevel {
+					t.Errorf("Expected level '%s', got %v", tt.expectedLevel, logEntry["level"])
+				}
+
+				if logEntry["action"] != tt.action {
+					t.Errorf("Expected action '%s', got %v", tt.action, logEntry["action"])
+				}
+
+				if logEntry["message"] != tt.expectedMsg {
+					t.Errorf("Expected message '%s', got %v", tt.expectedMsg, logEntry["message"])
+				}
+
+				// Check data fields are present
+				for key, expectedValue := range tt.data {
+					actualValue := logEntry[key]
+					// Handle type conversion for JSON numbers
+					if expectedInt, ok := expectedValue.(int); ok {
+						if actualFloat, ok := actualValue.(float64); ok {
+							if int(actualFloat) != expectedInt {
+								t.Errorf("Expected %s='%v', got %v", key, expectedValue, actualValue)
+							}
+						} else {
+							t.Errorf("Expected %s='%v', got %v", key, expectedValue, actualValue)
+						}
+					} else if actualValue != expectedValue {
+						t.Errorf("Expected %s='%v', got %v", key, expectedValue, actualValue)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestLogFileWatchEvent(t *testing.T) {
+	var buf bytes.Buffer
+	logger := SetupLoggerWithWriter(&buf, "debug")
+
+	LogFileWatchEvent(logger, "WRITE", "/test/script.sh")
+
+	output := buf.String()
+	var logEntry map[string]interface{}
+	err := json.Unmarshal([]byte(output), &logEntry)
+	if err != nil {
+		t.Fatalf("Failed to parse log as JSON: %v", err)
+	}
+
+	if logEntry["level"] != "debug" {
+		t.Errorf("Expected level 'debug', got %v", logEntry["level"])
+	}
+
+	if logEntry["event"] != "WRITE" {
+		t.Errorf("Expected event 'WRITE', got %v", logEntry["event"])
+	}
+
+	if logEntry["file"] != "/test/script.sh" {
+		t.Errorf("Expected file '/test/script.sh', got %v", logEntry["file"])
+	}
+
+	if logEntry["message"] != "File system event" {
+		t.Errorf("Expected message 'File system event', got %v", logEntry["message"])
+	}
 }
