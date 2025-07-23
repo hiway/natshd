@@ -67,7 +67,7 @@ get_kernel_info() {
             # Get FreeBSD kernel info
             KERNEL_IDENT=$(sysctl -n kern.ident 2>/dev/null)
             KERNEL_HOSTNAME=$(sysctl -n kern.hostname 2>/dev/null)
-            BOOT_TIME=$(sysctl -n kern.boottime 2>/dev/null | sed 's/.*sec = \([0-9]*\).*/\1/')
+            BOOT_TIME=$(sysctl -n kern.boottime 2>/dev/null | grep -o "sec = [0-9]*" | head -1 | awk '{print $3}')
             if [ -n "$BOOT_TIME" ]; then
                 BOOT_TIME_READABLE=$(date -r "$BOOT_TIME" "+%Y-%m-%d %H:%M:%S" 2>/dev/null)
             fi
