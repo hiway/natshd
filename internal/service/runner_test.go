@@ -137,7 +137,10 @@ func TestScriptRunner_GetServiceDefinition_Timeout(t *testing.T) {
 
 	slowScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
-  sleep 10
+  # Use a loop with short sleeps to allow proper signal handling
+  for i in {1..200}; do
+    sleep 0.05
+  done
   echo "{}"
   exit 0
 fi
@@ -286,7 +289,10 @@ EOF
   exit 0
 fi
 
-sleep 10
+# Use a loop with short sleeps to allow proper signal handling
+for i in {1..200}; do
+  sleep 0.05
+done
 echo "Too slow"
 `
 
