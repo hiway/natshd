@@ -17,6 +17,7 @@ freebsd-install: build
 	sudo mkdir -p $(SYSTEM_CONFIG_DIR)
 	sudo mkdir -p $(SYSTEM_SERVICE_DIR)
 	sudo mkdir -p $(SYSTEM_SCRIPTS_DIR)
+	sudo mkdir -p /var/log
 	sudo cp $(BINARY_NAME) $(SYSTEM_BIN_DIR)/
 	sudo chmod +x $(SYSTEM_BIN_DIR)/$(BINARY_NAME)
 	@# Install scripts
@@ -39,8 +40,18 @@ freebsd-install: build
 		sudo mkdir -p /var/lib/natshd; \
 		sudo chown natshd:natshd /var/lib/natshd; \
 	fi
+	@# Create log file with proper permissions
+	@if [ ! -f /var/log/natshd.log ]; then \
+		sudo touch /var/log/natshd.log; \
+		sudo chown natshd:natshd /var/log/natshd.log; \
+		sudo chmod 640 /var/log/natshd.log; \
+	fi
+	@# Install log rotation configuration
+	@echo "Installing log rotation configuration..."
+	sudo cp mk/templates/freebsd-newsyslog.conf /etc/newsyslog.conf.d/natshd.conf
 	@echo "natshd installed system-wide. Add 'natshd_enable=\"YES\"' to /etc/rc.conf to enable at boot."
 	@echo "Use 'sudo service natshd start' to start the service."
+	@echo "Logs will be written to /var/log/natshd.log"
 
 # User installation for FreeBSD
 freebsd-installuser: build
@@ -76,6 +87,8 @@ freebsd-uninstall:
 	sudo rm -f $(SYSTEM_BIN_DIR)/$(BINARY_NAME)
 	sudo rm -rf $(SYSTEM_CONFIG_DIR)
 	sudo rm -rf $(SYSTEM_SCRIPTS_DIR)
+	sudo rm -f /var/log/natshd.log
+	sudo rm -f /etc/newsyslog.conf.d/natshd.conf
 	@echo "natshd uninstalled system-wide. Remove 'natshd_enable=\"YES\"' from /etc/rc.conf if present."
 
 # User uninstallation for FreeBSD

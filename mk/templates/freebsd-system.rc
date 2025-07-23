@@ -8,13 +8,28 @@
 
 name=natshd
 rcvar=${name}_enable
-command="SYSTEM_BIN_DIR_PLACEHOLDER/natshd"
-command_args="-config SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
+command="/usr/sbin/daemon"
+command_args="-f -S -T ${name} -t '${name}: NATS Shell Daemon' -l daemon -p /var/run/${name}.pid -o /var/log/${name}.log -u natshd SYSTEM_BIN_DIR_PLACEHOLDER/natshd -config SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
 pidfile="/var/run/${name}.pid"
 required_files="SYSTEM_CONFIG_DIR_PLACEHOLDER/config.toml"
+start_precmd="natshd_precmd"
 
 natshd_user="natshd"
 natshd_group="natshd"
+
+natshd_precmd() {
+    # Create log file if it doesn't exist
+    if [ ! -f /var/log/${name}.log ]; then
+        touch /var/log/${name}.log
+        chown natshd:natshd /var/log/${name}.log
+        chmod 640 /var/log/${name}.log
+    fi
+    
+    # Ensure run directory exists
+    if [ ! -d /var/run ]; then
+        mkdir -p /var/run
+    fi
+}
 
 load_rc_config $name
 : ${natshd_enable:=NO}
