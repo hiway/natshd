@@ -6,7 +6,7 @@ if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
     "name": "SystemService",
-    "version": "1.0.0",
+    "version": "0.0",
     "description": "Network configuration and connectivity discovery",
     "endpoints": [
         {
@@ -98,44 +98,59 @@ get_interfaces() {
             fi
             ;;
         freebsd|macos)
-            ifconfig -a 2>/dev/null | awk '
-            BEGIN { RS = "\n\n"; FS = "\n" }
-            /^[a-zA-Z]/ {
-                name = $1; gsub(/:.*/, "", name)
-                state = "unknown"; mtu = 0; mac = ""
-                ipv4 = "[]"; ipv6 = "[]"
-                
-                for (i = 1; i <= NF; i++) {
-                    if ($i ~ /inet /) {
-                        match($i, /inet ([0-9.]+)/, arr)
-                        if (ipv4 == "[]") ipv4 = "[\"" arr[1] "\"]"
-                        else { gsub(/\]$/, ",\"" arr[1] "\"]", ipv4) }
-                    }
-                    if ($i ~ /inet6 /) {
-                        match($i, /inet6 ([0-9a-f:]+)/, arr)
-                        if (ipv6 == "[]") ipv6 = "[\"" arr[1] "\"]"
-                        else { gsub(/\]$/, ",\"" arr[1] "\"]", ipv6) }
-                    }
-                    if ($i ~ /ether /) {
-                        match($i, /ether ([0-9a-f:]+)/, arr)
-                        mac = arr[1]
-                    }
-                    if ($i ~ /mtu /) {
-                        match($i, /mtu ([0-9]+)/, arr)
-                        mtu = arr[1]
-                    }
-                    if ($i ~ /<.*UP.*>/) state = "up"
-                    else if ($i ~ /<.*>/ && $i !~ /UP/) state = "down"
-                    if ($i ~ /status: active/) state = "active"
-                    if ($i ~ /status: inactive/) state = "inactive"
-                }
-                
-                if (name != "lo0") {
+            INTERFACES=$(ifconfig -a 2>/dev/null | awk '
+            /^[a-zA-Z0-9]+:/ {
+                # New interface - output previous one first
+                if (name != "" && name != "lo0") {
                     if (interfaces != "") interfaces = interfaces ","
                     interfaces = interfaces "{\"name\":\"" name "\",\"state\":\"" state "\",\"mtu\":" mtu ",\"mac\":\"" mac "\",\"ipv4\":" ipv4 ",\"ipv6\":" ipv6 "}"
                 }
+                
+                # Reset for new interface
+                name = $1; gsub(/:/, "", name)
+                state = "unknown"; mtu = 0; mac = ""
+                ipv4 = "[]"; ipv6 = "[]"
+                
+                # Parse flags and MTU from first line
+                if ($0 ~ /<.*UP.*>/) state = "up"
+                else state = "down"
+                
+                if ($0 ~ /mtu [0-9]+/) {
+                    split($0, parts, " ")
+                    for (i in parts) {
+                        if (parts[i] == "mtu" && parts[i+1] != "") {
+                            mtu = parts[i+1]
+                            break
+                        }
+                    }
+                }
             }
-            END { print interfaces }'
+            /^[[:space:]]+ether/ {
+                mac = $2
+            }
+            /^[[:space:]]+inet [0-9]/ {
+                ip = $2
+                if (ipv4 == "[]") ipv4 = "[\"" ip "\"]"
+                else { gsub(/\]$/, ",\"" ip "\"]", ipv4) }
+            }
+            /^[[:space:]]+inet6/ {
+                ip = $2
+                gsub(/%.*/, "", ip)  # Remove %interface suffix
+                if (ipv6 == "[]") ipv6 = "[\"" ip "\"]"
+                else { gsub(/\]$/, ",\"" ip "\"]", ipv6) }
+            }
+            /^[[:space:]]+status:/ {
+                if ($2 == "active") state = "active"
+                else if ($2 == "inactive") state = "inactive"
+            }
+            END {
+                # Handle last interface
+                if (name != "" && name != "lo0") {
+                    if (interfaces != "") interfaces = interfaces ","
+                    interfaces = interfaces "{\"name\":\"" name "\",\"state\":\"" state "\",\"mtu\":" mtu ",\"mac\":\"" mac "\",\"ipv4\":" ipv4 ",\"ipv6\":" ipv6 "}"
+                }
+                print interfaces
+            }')
             ;;
     esac
     
