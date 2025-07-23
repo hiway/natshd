@@ -157,11 +157,14 @@ echo '{"cpu": "'$(nproc)'", "memory": "'$(free -h | awk '/^Mem:/ {print $2}')'"}
 
 Both scripts will be grouped under a single "SystemService" microservice with endpoints for both `system.facts` and `system.hardware`.
 
-### Make It Executable
+### Make Scripts Executable
 
 ```bash
-chmod +x scripts/greeting.sh
+chmod +x scripts/greeting.sh 
+chmod +x scripts/system-*.sh 
 ```
+
+> `natshd` will automatically load/reload/remove scripts based on filesystem events.
 
 ## Using Your Services
 
@@ -226,10 +229,15 @@ nats micro stats SystemService
 
 The `scripts/` directory contains several example services to get you started:
 
-- **greeting.sh** - Simple greeting service with multiple endpoints
-- **uptime.sh** - System monitoring service (uptime, load average)
-- **json-processor.sh** - JSON validation, transformation, and formatting
-- **file-ops.sh** - File operations and utilities
+- **greeting.sh** - Simple greeting service with endpoints for personalized greetings and farewells
+- **uptime.sh** - System monitoring service providing uptime and load average information
+- **system-facts.sh** - Comprehensive system information (OS, uptime, CPU, memory, etc.)
+- **system-hardware.sh** - Hardware discovery (CPU, memory, storage, graphics, network interfaces)
+- **system-kernel.sh** - Kernel version, modules, and system parameters
+- **system-network.sh** - Network configuration, interfaces, routes, DNS, and listening ports
+- **system-processes.sh** - Running processes, resource usage, and process statistics
+- **system-storage.sh** - Storage and filesystem information, block devices, and I/O stats
+- **system-users.sh** - User accounts, groups, login info, sudo/admin users, and password policy
 
 ## Features
 
