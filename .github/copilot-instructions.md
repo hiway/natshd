@@ -27,3 +27,65 @@ You will operate in a continuous loop, implementing one logical component (e.g.,
 *   **The `Makefile` is Law:** Only use `make` targets to perform actions. Do not invoke compilers or interpreters directly.
 *   **One Component at a Time:** Do not write code for multiple components simultaneously. Focus on the current task until it is complete and verified.
 *   **Communicate Your Actions:** Announce what you are doing at each step of the TDD cycle. This allows me to follow your work.
+
+**Markdown Formatting Requirements:**
+When creating or editing markdown files, you must strictly adhere to these formatting rules to avoid linting errors:
+
+*   **Fenced Code Blocks Must Have Language Specified (MD040):** Always specify the language for fenced code blocks. Use appropriate language identifiers such as `go`, `bash`, `json`, `yaml`, `toml`, `text`, etc. Never use empty fenced code blocks without a language. When displaying output or logs, use `text` as the language identifier.
+    
+    ✅ Correct:
+    ```go
+    func main() {
+        fmt.Println("Hello")
+    }
+    ```
+    
+    ❌ Incorrect:
+    ```
+    func main() {
+        fmt.Println("Hello")
+    }
+    ```
+
+*   **Blank Lines Around Fenced Code Blocks (MD031):** Always surround fenced code blocks with blank lines before and after.
+    
+    ✅ Correct:
+    
+    ```go
+    func example() {}
+    ```
+    
+    This is text after the code block.
+    
+    ❌ Incorrect:
+    Text before code block
+    ```go
+    func example() {}
+    ```
+    Text immediately after without blank line.
+
+*   **Blank Lines Around Headings:** Always surround headings with blank lines before and after, except at the very beginning of a file.
+    
+    ✅ Correct:
+    ```text
+    This is some text.
+    
+    ## This is a heading
+    
+    This is text after the heading.
+    ```
+    
+    ❌ Incorrect:
+    ```text
+    This is some text.
+    ## This is a heading
+    This is text after the heading.
+    ```
+
+*   **Additional Markdown Best Practices:**
+    *   Use consistent heading hierarchy (don't skip heading levels)
+    *   Use proper list formatting with consistent indentation
+    *   Always add blank lines around headings (MD022)
+    *   Use appropriate emphasis (bold/italic) consistently
+    *   Avoid trailing spaces at the end of lines
+    *   End files with a single newline character
