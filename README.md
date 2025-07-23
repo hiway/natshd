@@ -5,7 +5,11 @@ NATS Shell Daemon - Shell scripts as NATS microservices
 `natshd` automatically discovers shell scripts in a directory and exposes them as NATS microservices. 
 Drop executable shell scripts into the configured directory, and they become instantly available as networked services.
 
-**Service Grouping**: Multiple scripts that define the same service name are automatically grouped under a single microservice, allowing you to organize related functionality across multiple script files while maintaining efficient NATS service registration.
+**Why?**: I use nats-cli when prototyping [NATS](https://nats.io) services, `natshd` makes it easy to prototype nats micro services using shell scripts and keep them available beyond a terminal session. Some services that I run on my shelf-hosted server need no more than a shell script, and natshd is good enough for the task.
+
+**Status**: As of this writing, the idea and the implemented project are not even a day old - I may update this for adding authentication, env vars to not require `jq` to parse json and a handful other quality-of-life enhancements. This is not time-tested, nor production-ready, as with any code that you may find online - it is your responsibility to verify it does what you think it does.
+
+> Note: `natshd` is developed using LLM Assisted Coding - if you're allergic, this is your cue.
 
 ## Quick Start
 
