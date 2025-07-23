@@ -130,18 +130,23 @@ func TestLoggerLevels(t *testing.T) {
 }
 
 func TestNewContextLogger(t *testing.T) {
+	// Ensure global level is set to Info for this test
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	
 	var buf bytes.Buffer
-	baseLogger := SetupLoggerWithWriter(&buf, "info")
 
-	contextLogger := NewContextLogger(baseLogger, "test-service", "script.sh")
-
+	contextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "test-service", "script.sh")
 	contextLogger.Info().Msg("test message")
 
 	output := buf.String()
+	if output == "" {
+		t.Fatalf("No output in buffer")
+	}
+	
 	var logEntry map[string]interface{}
 	err := json.Unmarshal([]byte(output), &logEntry)
 	if err != nil {
-		t.Fatalf("Failed to parse log as JSON: %v", err)
+		t.Fatalf("Failed to parse log as JSON: %v, output was: %q", err, output)
 	}
 
 	if logEntry["service"] != "test-service" {
@@ -233,6 +238,86 @@ func TestLogServiceLifecycle(t *testing.T) {
 
 	if logEntry["script"] != "test.sh" {
 		t.Errorf("Expected script 'test.sh', got %v", logEntry["script"])
+	}
+}
+
+func TestLogServiceLifecycleNoDuplicateFields(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Create a context logger with service and script fields
+	contextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "TestService", "/path/to/script.sh")
+	// This should not create duplicate fields
+	LogServiceLifecycle(contextLogger, "starting", "TestService", "/path/to/script.sh")
+
+	var logEntry map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &logEntry)
+	if err != nil {
+		t.Fatalf("Failed to parse log as JSON: %v", err)
+	}
+
+	// Verify the log entry structure
+	logEntryStr := buf.String()
+
+	// Count occurrences of each field to ensure no duplicates
+	serviceCount := strings.Count(logEntryStr, `"service":`)
+	scriptCount := strings.Count(logEntryStr, `"script":`)
+
+	if serviceCount != 1 {
+		t.Errorf("Service field should appear exactly once, got %d occurrences in: %s", serviceCount, logEntryStr)
+	}
+	if scriptCount != 1 {
+		t.Errorf("Script field should appear exactly once, got %d occurrences in: %s", scriptCount, logEntryStr)
+	}
+
+	// Verify values are correct
+	if logEntry["action"] != "starting" {
+		t.Errorf("Expected action 'starting', got %v", logEntry["action"])
+	}
+	if logEntry["service"] != "TestService" {
+		t.Errorf("Expected service 'TestService', got %v", logEntry["service"])
+	}
+	if logEntry["script"] != "/path/to/script.sh" {
+		t.Errorf("Expected script '/path/to/script.sh', got %v", logEntry["script"])
+	}
+	if logEntry["message"] != "Service lifecycle event" {
+		t.Errorf("Expected message 'Service lifecycle event', got %v", logEntry["message"])
+	}
+}
+
+func TestLogServiceLifecycleEmptyToPopulatedService(t *testing.T) {
+	var buf bytes.Buffer
+
+	// Create a context logger with empty service field (simulating initial ManagedService state)
+	emptyContextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "", "/path/to/script.sh")
+
+	// Log a service lifecycle event with empty context - this should only show empty service
+	LogServiceLifecycle(emptyContextLogger, "initializing", "GreetingService", "/path/to/script.sh")
+
+	// Reset buffer
+	buf.Reset()
+
+	// Now create a properly initialized logger with the service name (simulating post-initialization)
+	populatedContextLogger := NewContextLogger(&buf, zerolog.InfoLevel, "GreetingService", "/path/to/script.sh")
+
+	// This should show the populated service name
+	LogServiceLifecycle(populatedContextLogger, "initialized", "GreetingService", "/path/to/script.sh")
+
+	logOutput := buf.String()
+
+	// We should only have the populated service field, no duplicates
+	serviceCount := strings.Count(logOutput, `"service":"`)
+	if serviceCount != 1 {
+		t.Errorf("Service field should appear exactly once, got %d occurrences in: %s", serviceCount, logOutput)
+	}
+
+	// Should have the populated service
+	if !strings.Contains(logOutput, `"service":"GreetingService"`) {
+		t.Errorf("Expected populated service field, got: %s", logOutput)
+	}
+
+	// Should NOT have empty service
+	if strings.Contains(logOutput, `"service":""`) {
+		t.Errorf("Should not contain empty service field, got: %s", logOutput)
 	}
 }
 

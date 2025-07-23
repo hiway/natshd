@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	"github.com/hiway/natshd/internal/logging"
 	"github.com/hiway/natshd/internal/service"
@@ -32,8 +33,7 @@ type ManagedService struct {
 
 // NewManagedService creates a new managed service for the given script
 func NewManagedService(scriptPath string, natsConn *nats.Conn, logger zerolog.Logger) *ManagedService {
-	serviceLogger := logging.NewContextLogger(logger, "", scriptPath)
-
+	serviceLogger := logging.NewContextLogger(os.Stderr, logger.GetLevel(), "", scriptPath)
 	return &ManagedService{
 		scripts:  make(map[string]ScriptRunner),
 		natsConn: natsConn,
@@ -117,8 +117,8 @@ func (ms *ManagedService) Initialize(ctx context.Context) error {
 	}
 	ms.definition.Endpoints = endpoints
 
-	// Update logger with service name
-	ms.logger = logging.NewContextLogger(ms.logger, definition.Name, firstScriptPath)
+	// Update logger with service name only (script path is already in context)
+	ms.logger = logging.NewContextLogger(os.Stderr, ms.logger.GetLevel(), definition.Name, firstScriptPath)
 
 	logging.LogServiceLifecycle(ms.logger, "initialized", definition.Name, firstScriptPath)
 	ms.initialized = true
@@ -135,11 +135,7 @@ func (ms *ManagedService) Serve(ctx context.Context) error {
 		break
 	}
 
-	ms.logger.Info().
-		Str("action", "starting").
-		Str("service", ms.definition.Name).
-		Str("script", firstScriptPath).
-		Msg("Service lifecycle event")
+	logging.LogServiceLifecycle(ms.logger, "starting", ms.definition.Name, firstScriptPath)
 
 	// Check if NATS connection is available
 	if ms.natsConn == nil {

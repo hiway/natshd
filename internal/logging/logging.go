@@ -1,8 +1,10 @@
 package logging
 
 import (
+	"bytes"
 	"io"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -40,12 +42,15 @@ func SetupLoggerWithWriter(writer io.Writer, level string) zerolog.Logger {
 		Logger()
 }
 
-// NewContextLogger creates a logger with service and script context
-func NewContextLogger(baseLogger zerolog.Logger, serviceName, scriptPath string) zerolog.Logger {
-	return baseLogger.With().
+// NewContextLogger creates a new logger with service and script context
+func NewContextLogger(writer io.Writer, level zerolog.Level, serviceName, scriptPath string) zerolog.Logger {
+	freshLogger := zerolog.New(writer).Level(level)
+	contextLogger := freshLogger.With().
+		Timestamp().
 		Str("service", serviceName).
 		Str("script", scriptPath).
 		Logger()
+	return contextLogger
 }
 
 // LogRequestResponse logs NATS request/response interactions
@@ -68,12 +73,30 @@ func LogRequestResponse(logger zerolog.Logger, subject string, request, response
 }
 
 // LogServiceLifecycle logs service start, stop, and restart events
+// This function avoids field duplication by only adding fields that aren't already in the logger context
 func LogServiceLifecycle(logger zerolog.Logger, action, serviceName, scriptPath string) {
-	logger.Info().
-		Str("action", action).
-		Str("service", serviceName).
-		Str("script", scriptPath).
-		Msg("Service lifecycle event")
+	// Test if logger already has context by creating a test event
+	var testBuf bytes.Buffer
+	testLogger := logger.Output(&testBuf)
+	testLogger.Info().Msg("")
+	testOutput := testBuf.String()
+
+	// Check if service and script fields already exist in the context
+	hasServiceContext := strings.Contains(testOutput, `"service":`)
+	hasScriptContext := strings.Contains(testOutput, `"script":`)
+
+	// Create the event with action
+	event := logger.Info().Str("action", action)
+
+	// Only add fields that aren't already in the context
+	if !hasServiceContext && serviceName != "" {
+		event = event.Str("service", serviceName)
+	}
+	if !hasScriptContext && scriptPath != "" {
+		event = event.Str("script", scriptPath)
+	}
+
+	event.Msg("Service lifecycle event")
 }
 
 // LogFileWatchEvent logs filesystem change events
