@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Hardware Discovery Service
 # Cross-platform hardware information gathering
 

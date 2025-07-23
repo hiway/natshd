@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Processes Discovery Service
 # Cross-platform running processes and resource usage information
 

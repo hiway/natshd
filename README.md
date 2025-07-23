@@ -66,7 +66,7 @@ Each shell script becomes a microservice by implementing two simple requirements
 ### Example: Simple Greeting Service
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Service definition (required)
 if [[ "$1" == "info" ]]; then
@@ -113,7 +113,7 @@ You can create multiple script files that share the same service name:
 **scripts/system-facts.sh**:
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
@@ -138,7 +138,7 @@ echo '{"hostname": "'$(hostname)'", "uptime": "'$(uptime -p)'"}'
 **scripts/system-hardware.sh**:
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
     cat <<EOF
 {
@@ -167,7 +167,7 @@ Both scripts will be grouped under a single "SystemService" microservice with en
 You can include a `metadata` field in each endpoint definition to describe parameters, types, and other details. This metadata will be visible in `nats micro info` output and is passed through to the NATS microservice registry.
 
 ```bash
-#!/bin/bash
+#!/usr/bin/env bash
 
 # Service definition with endpoint metadata
 if [[ "$1" == "info" ]]; then

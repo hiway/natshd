@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Facts Discovery Service
 # Cross-platform system information gathering
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # Example NATS microservice script for natshd
 # This script demonstrates how to create a simple greeting service
 # Modified to test file watcher functionality

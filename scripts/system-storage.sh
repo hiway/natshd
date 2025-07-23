@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Storage Discovery Service
 # Cross-platform storage and filesystem information gathering
 

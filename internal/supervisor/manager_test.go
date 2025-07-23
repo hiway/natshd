@@ -49,7 +49,7 @@ func TestManager_ServiceGrouping(t *testing.T) {
 	manager := NewManager(tempDir, natsConn, logger)
 
 	// Create two scripts with the same service name but different endpoints
-	script1Content := `#!/bin/bash
+	script1Content := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -69,7 +69,7 @@ fi
 echo "facts response"
 `
 
-	script2Content := `#!/bin/bash
+	script2Content := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -169,7 +169,7 @@ func TestManager_Start(t *testing.T) {
 
 	// Create a test script
 	scriptPath := filepath.Join(tempDir, "test.sh")
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -220,7 +220,7 @@ func TestManager_RestartServiceWithGracefulShutdown(t *testing.T) {
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
 	// Create and add a service first
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -278,7 +278,7 @@ func TestManager_FileEventDebouncing(t *testing.T) {
 	manager := NewManager(tempDir, natsConn, logger)
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -349,7 +349,7 @@ func TestManager_DiscoverServices(t *testing.T) {
 	}{
 		{
 			name: "valid.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -372,14 +372,14 @@ echo "valid response"
 		},
 		{
 			name: "invalid.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 echo "not a service"
 `,
 			valid: false,
 		},
 		{
 			name: "not_executable.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 echo "not executable"
 `,
 			valid: false,
@@ -430,7 +430,7 @@ func TestManager_AddService(t *testing.T) {
 	manager := NewManager(tempDir, natsConn, logger)
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -485,7 +485,7 @@ func TestManager_RemoveService(t *testing.T) {
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
 	// Create and add a service first
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -546,7 +546,7 @@ func TestManager_RestartService(t *testing.T) {
 	scriptPath := filepath.Join(tempDir, "test.sh")
 
 	// Create and add a service first
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -604,7 +604,7 @@ func TestManager_HandleFileEvent(t *testing.T) {
 	manager := NewManager(tempDir, natsConn, logger)
 
 	scriptPath := filepath.Join(tempDir, "test.sh")
-	scriptContent := `#!/bin/bash
+	scriptContent := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -734,7 +734,7 @@ func TestManager_IsValidScript(t *testing.T) {
 		{
 			name:     "valid shell script",
 			filename: "test.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   echo '{"name":"TestService","version":"1.0.0","description":"Test","endpoints":[{"name":"Test","subject":"test"}]}'
   exit 0
@@ -754,7 +754,7 @@ echo "response"
 		{
 			name:     "non-executable shell script",
 			filename: "test.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 echo "not executable"
 `,
 			mode:        0644,
@@ -763,7 +763,7 @@ echo "not executable"
 		{
 			name:     "invalid service definition",
 			filename: "invalid.sh",
-			content: `#!/bin/bash
+			content: `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   echo "invalid json"
   exit 0

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Kernel Discovery Service
 # Cross-platform kernel information gathering
 

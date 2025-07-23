@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Network Discovery Service
 # Cross-platform network configuration gathering
 

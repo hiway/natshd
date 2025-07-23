@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System uptime microservice script for natshd
 # This script provides system uptime information
 

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 # System Users Discovery Service
 # Cross-platform user accounts and groups information
 

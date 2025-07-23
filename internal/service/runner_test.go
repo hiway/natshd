@@ -24,7 +24,7 @@ func TestScriptRunner_GetServiceDefinition(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "test_service.sh")
 
-	validDefinitionScript := `#!/bin/bash
+	validDefinitionScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -79,7 +79,7 @@ func TestScriptRunner_GetServiceDefinition_InvalidJSON(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "invalid_json.sh")
 
-	invalidJSONScript := `#!/bin/bash
+	invalidJSONScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   echo "{ invalid json"
   exit 0
@@ -105,7 +105,7 @@ func TestScriptRunner_GetServiceDefinition_ScriptError(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "error_script.sh")
 
-	errorScript := `#!/bin/bash
+	errorScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   echo "Error message" >&2
   exit 1
@@ -135,7 +135,7 @@ func TestScriptRunner_GetServiceDefinition_Timeout(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "slow_script.sh")
 
-	slowScript := `#!/bin/bash
+	slowScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   sleep 10
   echo "{}"
@@ -166,7 +166,7 @@ func TestScriptRunner_ExecuteRequest(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "echo_service.sh")
 
-	echoScript := `#!/bin/bash
+	echoScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -224,7 +224,7 @@ func TestScriptRunner_ExecuteRequest_ScriptError(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "error_service.sh")
 
-	errorScript := `#!/bin/bash
+	errorScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
@@ -275,7 +275,7 @@ func TestScriptRunner_ExecuteRequest_Timeout(t *testing.T) {
 	tempDir := t.TempDir()
 	scriptPath := filepath.Join(tempDir, "slow_service.sh")
 
-	slowScript := `#!/bin/bash
+	slowScript := `#!/usr/bin/env bash
 if [[ "$1" == "info" ]]; then
   cat <<EOF
 {
